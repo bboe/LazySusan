@@ -3,8 +3,9 @@ import os
 import sys
 import traceback
 from ConfigParser import ConfigParser
+from lazysusan.plugins import CommandPlugin, Plugin, PluginException
 from ttapi import Bot
-from plugins import CommandPlugin, Plugin, PluginException
+
 
 __version__ = '0.1dev'
 
@@ -131,8 +132,9 @@ class LazySusan(object):
             module_name = parts[0]
             class_Name = parts[0].title()
 
+        # TODO: Support loading from local plugins folders
         try:
-            module = __import__('plugins.{0}'.format(module_name),
+            module = __import__('lazysusan.plugins.{0}'.format(module_name),
                                 fromlist=[class_name])
             plugin = getattr(module, class_name)()
             plugin.__class__.NAME = plugin_name
@@ -199,7 +201,3 @@ def main():
     #bot.process_message({'text': '/commands', 'command': 'CLIENT_DEBUG'})
     #bot.process_message({'text': '/echo foo', 'command': 'CLIENT_DEBUG'})
     bot.start()
-
-
-if __name__ == '__main__':
-    sys.exit(main())

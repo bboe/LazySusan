@@ -1,4 +1,4 @@
-from . import CommandPlugin
+from lazysusan.plugins import CommandPlugin
 
 class BotDJ(CommandPlugin):
     COMMANDS = {'/botdj': 'play', '/unbotdj': 'stop'}

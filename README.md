@@ -18,4 +18,4 @@ instructions](http://alaingilbert.github.com/Turntable-API/bookmarklet.html).
 
 0. Launch lazysusan
 
-        ./lazysusan
+        python -c "import lazysusan; lazysusan.main()"

@@ -1,4 +1,4 @@
-from . import CommandPlugin
+from lazysusan.plugins import CommandPlugin
 
 class Echo(CommandPlugin):
     COMMANDS = {'/echo': 'echo'}
