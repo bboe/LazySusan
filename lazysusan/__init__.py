@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 import os
-import sys
 import traceback
 from ConfigParser import ConfigParser
-from lazysusan.plugins import CommandPlugin, Plugin, PluginException
+from lazysusan.helpers import get_sender_id, moderator_required
+from lazysusan.plugins import CommandPlugin
 from ttapi import Bot
-
 
 __version__ = '0.1dev'
 
@@ -17,7 +16,6 @@ def display_exceptions(function):
             return function(cls, *args, **kwargs)
         except:
             traceback.print_exc()
-            print data.keys()
     return wrapper
 
 
@@ -50,12 +48,15 @@ class LazySusan(object):
         self.bot = Bot(config['auth_id'], config['user_id'], config['room_id'])
         self.bot.on('pmmed', self.handle_pm)
         self.bot.on('ready', self.handle_ready)
+        self.bot.on('roomChanged', self.handle_room_change)
         self.bot.on('speak', self.handle_room_message)
         self.bot.ws.on_error = handle_error
         self.commands = {'/about': self.cmd_about,
                          '/commands': self.cmd_commands,
-                         '/help': self.cmd_help}
+                         '/help': self.cmd_help,
+                         '/reload': self.cmd_reload}
         self.loaded_plugins = {}
+        self.moderator_ids = set()
         self.username = None
 
     def _load_command_plugin(self, plugin):
@@ -74,7 +75,6 @@ class LazySusan(object):
             to_add[command] = getattr(plugin, func_name)
         self.commands.update(to_add)
 
-
     def cmd_about(self, message, data):
         """Display information about this bot."""
         if not message.strip():
@@ -87,13 +87,12 @@ class LazySusan(object):
         if message.strip():
             return
 
-        if False:  # All commands
+        if self.is_admin(data):  # All commands
             commands = self.commands.keys()
-        else:  # Exclude admin commands
+        else:  # Exclude moderator commands
             commands = {}
             for command, func in self.commands.items():
-                obj = func.im_self
-                if not isinstance(obj, CommandPlugin) or not obj.REQUIRE_ADMIN:
+                if not func.func_dict.get('moderator_required'):
                     commands[command] = func
         reply = 'Available commands: '
         reply += ', '.join(sorted(commands))
@@ -122,6 +121,17 @@ class LazySusan(object):
             return
         self.reply(reply, data)
 
+    @moderator_required
+    def cmd_reload(self, message, data):
+        """Reload the specified plugin."""
+        self.reply('Not yet implemented.', data)
+
+    def is_admin(self, item):
+        """item can either be the user_id, or a dictionary from a message."""
+        if isinstance(item, dict):
+            item = get_sender_id(item)
+        return item in self.moderator_ids
+
     def load_plugin(self, plugin_name):
         parts = plugin_name.split('.')
         if len(parts) > 1:
@@ -130,7 +140,7 @@ class LazySusan(object):
         else:
             # Use the titlecase format of the module name as the class name
             module_name = parts[0]
-            class_Name = parts[0].title()
+            class_name = parts[0].title()
 
         # TODO: Support loading from local plugins folders
         try:
@@ -154,6 +164,10 @@ class LazySusan(object):
     @display_exceptions
     def handle_ready(self, _):
         self.bot.userInfo(self.set_username)
+
+    @display_exceptions
+    def handle_room_change(self, data):
+        self.moderator_ids = set(data['room']['metadata']['moderator_id'])
 
     @display_exceptions
     def handle_room_message(self, data):
@@ -196,8 +210,10 @@ class LazySusan(object):
 
 def main():
     bot = LazySusan()
-    bot.load_plugin('admin.BotDJ')
+    bot.load_plugin('mod.BotDJ')
     bot.load_plugin('simple.Echo')
     #bot.process_message({'text': '/commands', 'command': 'CLIENT_DEBUG'})
     #bot.process_message({'text': '/echo foo', 'command': 'CLIENT_DEBUG'})
+    #bot.process_message({'text': '/botdj', 'command': 'CLIENT_DEBUG'})
+    #bot.process_message({'text': '/reload', 'command': 'CLIENT_DEBUG'})
     bot.start()

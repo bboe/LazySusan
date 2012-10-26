@@ -1,5 +1,5 @@
 class Plugin(object):
-    REQUIRE_ADMIN = False
+    pass
 
 
 class CommandPlugin(Plugin):
