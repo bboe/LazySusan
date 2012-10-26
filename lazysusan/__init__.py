@@ -46,18 +46,23 @@ class LazySusan(object):
     def __init__(self, config_section='DEFAULT'):
         config = self._get_config(config_section)
         self.bot = Bot(config['auth_id'], config['user_id'], config['room_id'])
+        self.bot.on('add_dj', self.handle_add_dj)
         self.bot.on('new_moderator', self.handle_add_moderator)
         self.bot.on('pmmed', self.handle_pm)
         self.bot.on('ready', self.handle_ready)
+        self.bot.on('rem_dj', self.handle_remove_dj)
         self.bot.on('rem_moderator', self.handle_remove_moderator)
         self.bot.on('roomChanged', self.handle_room_change)
         self.bot.on('speak', self.handle_room_message)
         self.bot.ws.on_error = handle_error
+        self.bot_id = config['user_id']
         self.commands = {'/about': self.cmd_about,
                          '/commands': self.cmd_commands,
                          '/help': self.cmd_help,
                          '/reload': self.cmd_reload}
+        self.dj_ids = set()
         self.loaded_plugins = {}
+        self.max_djs = None
         self.moderator_ids = set()
         self.username = None
 
@@ -164,6 +169,11 @@ class LazySusan(object):
             return False
 
     @display_exceptions
+    def handle_add_dj(self, data):
+        for user in data['user']:
+            self.dj_ids.add(user['userid'])
+
+    @display_exceptions
     def handle_add_moderator(self, data):
         self.moderator_ids.add(data['userid'])
 
@@ -176,11 +186,18 @@ class LazySusan(object):
         self.bot.userInfo(self.set_username)
 
     @display_exceptions
+    def handle_remove_dj(self, data):
+        for user in data['user']:
+            self.dj_ids.remove(user['userid'])
+
+    @display_exceptions
     def handle_remove_moderator(self, data):
         self.moderator_ids.remove(data['userid'])
 
     @display_exceptions
     def handle_room_change(self, data):
+        self.dj_ids = set(data['room']['metadata']['djs'])
+        self.max_djs = data['room']['metadata']['max_djs']
         self.moderator_ids = set(data['room']['metadata']['moderator_id'])
 
     @display_exceptions
