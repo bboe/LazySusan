@@ -21,13 +21,11 @@ def moderator_required(function):
     @wraps(function)
     def wrapper(cls, *args, **kwargs):
         if isinstance(cls, CommandPlugin):
-            bot = args[0]
-            data = args[2]
+            bot = cls.bot
         else:  # Support the built-in commands
             bot = cls
-            data = args[1]
 
-        user_id = get_sender_id(data)
+        user_id = get_sender_id(args[1])
         # Verify the user is a moderator
         if user_id not in bot.moderator_ids:
             message = 'You must be a moderator to execute that command.'

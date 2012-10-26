@@ -157,7 +157,7 @@ class LazySusan(object):
         try:
             module = __import__('lazysusan.plugins.{0}'.format(module_name),
                                 fromlist=[class_name])
-            plugin = getattr(module, class_name)()
+            plugin = getattr(module, class_name)(self)
             plugin.__class__.NAME = plugin_name
             if isinstance(plugin, CommandPlugin):
                 if not self._load_command_plugin(plugin):
@@ -215,11 +215,7 @@ class LazySusan(object):
         handler = self.commands.get(command)
         if not handler:
             return
-
-        if isinstance(handler.im_self, CommandPlugin):
-            handler(self, message, data)
-        else:
-            handler(message, data)
+        handler(message, data)
 
     def reply(self, message, data):
         if data['command'] == 'speak':
