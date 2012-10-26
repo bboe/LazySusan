@@ -4,7 +4,7 @@ import sys
 import traceback
 from ConfigParser import ConfigParser
 from ttapi import Bot
-from plugins import Plugin
+from plugins import CommandPlugin, Plugin, PluginException
 
 __version__ = '0.1dev'
 
@@ -57,6 +57,23 @@ class LazySusan(object):
         self.loaded_plugins = {}
         self.username = None
 
+    def _load_command_plugin(self, plugin):
+        to_add = {}
+        for command, func_name in plugin.COMMANDS.items():
+            if command in self.commands:
+                other = self.commands[command]
+                if isinstance(other.im_self, CommandPlugin):
+                    print('`{0}` conflicts with `{1}` for command `{2}`.'
+                          .format(plugin.NAME, other.im_self.NAME, command))
+                else:
+                    print('`{0}` cannot use the reserved command `{1}`.'
+                          .format(plugin.NAME, command))
+                print('Not loading plugin `{0}`.'.format(plugin.NAME))
+                return False
+            to_add[command] = getattr(plugin, func_name)
+        self.commands.update(to_add)
+
+
     def cmd_about(self, message, data):
         """Display information about this bot."""
         if not message.strip():
@@ -68,8 +85,17 @@ class LazySusan(object):
         """List the available commands."""
         if message.strip():
             return
+
+        if False:  # All commands
+            commands = self.commands.keys()
+        else:  # Exclude admin commands
+            commands = {}
+            for command, func in self.commands.items():
+                obj = func.im_self
+                if not isinstance(obj, CommandPlugin) or not obj.REQUIRE_ADMIN:
+                    commands[command] = func
         reply = 'Available commands: '
-        reply += ', '.join(sorted(self.commands.keys()))
+        reply += ', '.join(sorted(commands))
         self.reply(reply, data)
 
     def cmd_help(self, message, data):
@@ -110,17 +136,9 @@ class LazySusan(object):
                                 fromlist=[class_name])
             plugin = getattr(module, class_name)()
             plugin.__class__.NAME = plugin_name
-            cmd = plugin.COMMAND
-            if plugin.COMMAND in self.commands:
-                other = self.commands[plugin.COMMAND]
-                if isinstance(other, Plugin):
-                    print('`{0}` conflicts with `{1}` for command `{2}`.'
-                          .format(plugin_name, other.NAME, plugin.COMMAND))
-                else:
-                    print('`{0}` cannot use the reserved command `{1}`.'
-                          .format(plugin_name, plugin.COMMAND))
-                return False
-            self.commands[cmd] = plugin
+            if isinstance(plugin, CommandPlugin):
+                if not self._load_command_plugin(plugin):
+                    return
             self.loaded_plugins[plugin_name] = plugin
             return True
         except (AttributeError, ImportError):
@@ -151,8 +169,8 @@ class LazySusan(object):
         if not handler:
             return
 
-        if isinstance(handler, Plugin):
-            handler.handle(self, message, data)
+        if isinstance(handler.im_self, CommandPlugin):
+            handler(self, message, data)
         else:
             handler(message, data)
 
@@ -161,6 +179,8 @@ class LazySusan(object):
             self.bot.speak(message)
         elif data['command'] == 'pmmed':
             self.bot.pm(message, data['senderid'])
+        elif data['command'] == 'CLIENT_DEBUG':
+            print(message)
         else:
             raise Exception('Unrecognized command type `{0}`'
                             .format(data['command']))
@@ -174,7 +194,10 @@ class LazySusan(object):
 
 def main():
     bot = LazySusan()
+    bot.load_plugin('admin.BotDJ')
     bot.load_plugin('simple.Echo')
+    #bot.process_message({'text': '/commands', 'command': 'CLIENT_DEBUG'})
+    #bot.process_message({'text': '/echo foo', 'command': 'CLIENT_DEBUG'})
     bot.start()
 
 

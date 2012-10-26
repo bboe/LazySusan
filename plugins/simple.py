@@ -1,8 +1,8 @@
-from . import Plugin
+from . import CommandPlugin
 
-class Echo(Plugin):
-    '''Simply echo everything after /echo.'''
-    COMMAND = '/echo'
+class Echo(CommandPlugin):
+    COMMANDS = {'/echo': 'echo'}
 
-    def handle(self, bot, message, data):
+    def echo(self, bot, message, data):
+        """Repeat everything everything after /echo."""
         bot.reply(message, data)
