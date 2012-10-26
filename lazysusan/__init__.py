@@ -46,8 +46,10 @@ class LazySusan(object):
     def __init__(self, config_section='DEFAULT'):
         config = self._get_config(config_section)
         self.bot = Bot(config['auth_id'], config['user_id'], config['room_id'])
+        self.bot.on('new_moderator', self.handle_add_moderator)
         self.bot.on('pmmed', self.handle_pm)
         self.bot.on('ready', self.handle_ready)
+        self.bot.on('rem_moderator', self.handle_remove_moderator)
         self.bot.on('roomChanged', self.handle_room_change)
         self.bot.on('speak', self.handle_room_message)
         self.bot.ws.on_error = handle_error
@@ -87,7 +89,7 @@ class LazySusan(object):
         if message.strip():
             return
 
-        if self.is_admin(data):  # All commands
+        if self.is_moderator(data):  # All commands
             commands = self.commands.keys()
         else:  # Exclude moderator commands
             commands = {}
@@ -114,6 +116,10 @@ class LazySusan(object):
             reply = docstr(self.cmd_help)
         elif not message.isspace():
             if message in self.commands:
+                func = self.commands[message]
+                if func.func_dict.get('moderator_required') and \
+                        not self.is_moderator(data):
+                    return
                 reply = docstr(self.commands[message])
             else:
                 reply = '`{0}` is not a valid command.'.format(message)
@@ -126,7 +132,7 @@ class LazySusan(object):
         """Reload the specified plugin."""
         self.reply('Not yet implemented.', data)
 
-    def is_admin(self, item):
+    def is_moderator(self, item):
         """item can either be the user_id, or a dictionary from a message."""
         if isinstance(item, dict):
             item = get_sender_id(item)
@@ -158,12 +164,20 @@ class LazySusan(object):
             return False
 
     @display_exceptions
+    def handle_add_moderator(self, data):
+        self.moderator_ids.add(data['userid'])
+
+    @display_exceptions
     def handle_pm(self, data):
         self.process_message(data)
 
     @display_exceptions
     def handle_ready(self, _):
         self.bot.userInfo(self.set_username)
+
+    @display_exceptions
+    def handle_remove_moderator(self, data):
+        self.moderator_ids.remove(data['userid'])
 
     @display_exceptions
     def handle_room_change(self, data):
