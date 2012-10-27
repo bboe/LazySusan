@@ -1,5 +1,16 @@
+import traceback
 from functools import wraps
 from lazysusan.plugins import CommandPlugin
+
+
+def display_exceptions(function):
+    """Expand the arguments to the functions."""
+    def wrapper(cls, *args, **kwargs):
+        try:
+            return function(cls, *args, **kwargs)
+        except:
+            traceback.print_exc()
+    return wrapper
 
 
 def get_sender_id(data):

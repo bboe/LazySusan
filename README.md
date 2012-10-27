@@ -7,10 +7,6 @@ stages of development, so her plugin API could change.
 
         pip install ttapi
 
-    (This will work in the near future. For now you have to manually install
-    [ttapi](https://github.com/alaingilbert/Turntable-API/tree/python_ttapi).)
-
-
 0. Copy lazysusan-sample.ini to lazysusan.ini.
 
 0. Update lazysusan.ini to include your connection information as per [these

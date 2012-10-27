@@ -2,21 +2,12 @@
 import os
 import traceback
 from ConfigParser import ConfigParser
-from lazysusan.helpers import get_sender_id, moderator_required
+from lazysusan.helpers import (display_exceptions, get_sender_id,
+                               moderator_required)
 from lazysusan.plugins import CommandPlugin
 from ttapi import Bot
 
 __version__ = '0.1dev'
-
-
-def display_exceptions(function):
-    """Expand the arguments to the functions."""
-    def wrapper(cls, *args, **kwargs):
-        try:
-            return function(cls, *args, **kwargs)
-        except:
-            traceback.print_exc()
-    return wrapper
 
 
 def handle_error(*args, **kwargs):
@@ -47,9 +38,11 @@ class LazySusan(object):
         config = self._get_config(config_section)
         self.bot = Bot(config['auth_id'], config['user_id'], config['room_id'])
         self.bot.on('add_dj', self.handle_add_dj)
+        self.bot.on('deregistered', self.handle_user_leave)
         self.bot.on('new_moderator', self.handle_add_moderator)
         self.bot.on('pmmed', self.handle_pm)
         self.bot.on('ready', self.handle_ready)
+        self.bot.on('registered', self.handle_user_join)
         self.bot.on('rem_dj', self.handle_remove_dj)
         self.bot.on('rem_moderator', self.handle_remove_moderator)
         self.bot.on('roomChanged', self.handle_room_change)
@@ -61,6 +54,7 @@ class LazySusan(object):
                          '/help': self.cmd_help,
                          '/reload': self.cmd_reload}
         self.dj_ids = set()
+        self.listener_ids = set()
         self.loaded_plugins = {}
         self.max_djs = None
         self.moderator_ids = set()
@@ -166,6 +160,7 @@ class LazySusan(object):
             return True
         except (AttributeError, ImportError):
             print('`{0}` is not a valid plugin'.format(plugin_name))
+            traceback.print_exc()
             return False
 
     @display_exceptions
@@ -197,6 +192,7 @@ class LazySusan(object):
     @display_exceptions
     def handle_room_change(self, data):
         self.dj_ids = set(data['room']['metadata']['djs'])
+        self.listener_ids = set(x['userid'] for x in data['users'])
         self.max_djs = data['room']['metadata']['max_djs']
         self.moderator_ids = set(data['room']['metadata']['moderator_id'])
 
@@ -204,6 +200,16 @@ class LazySusan(object):
     def handle_room_message(self, data):
         if self.username and self.username != data['name']:
             self.process_message(data)
+
+    @display_exceptions
+    def handle_user_join(self, data):
+        for user in data['user']:
+            self.listener_ids.add(user['userid'])
+
+    @display_exceptions
+    def handle_user_leave(self, data):
+        for user in data['user']:
+            self.listener_ids.remove(user['userid'])
 
     def process_message(self, data):
         parts = data['text'].split()
