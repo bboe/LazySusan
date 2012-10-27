@@ -7,7 +7,7 @@ from lazysusan.helpers import (display_exceptions, get_sender_id,
 from lazysusan.plugins import CommandPlugin
 from ttapi import Bot
 
-__version__ = '0.1dev'
+__version__ = '0.1beta'
 
 
 def handle_error(*args, **kwargs):

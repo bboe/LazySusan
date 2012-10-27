@@ -3,9 +3,9 @@ stages of development, so her plugin API could change.
 
 ## Setup
 
-0. Install the dependencies
+0. Install the package
 
-        pip install ttapi
+        pip install lazysusan
 
 0. Copy lazysusan-sample.ini to lazysusan.ini.
 
@@ -14,4 +14,4 @@ instructions](http://alaingilbert.github.com/Turntable-API/bookmarklet.html).
 
 0. Launch lazysusan
 
-        python -c "import lazysusan; lazysusan.main()"
+        lazysusasn

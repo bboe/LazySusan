@@ -42,6 +42,8 @@ class BotDJ(CommandPlugin):
     @moderator_required
     def play(self, message, data):
         """Attempt to have the bot dj."""
+        if message:
+            return
         if self.is_dj:
             return self.bot.reply('I am already DJing.', data)
         if len(self.bot.dj_ids) < self.bot.max_djs:
@@ -51,6 +53,8 @@ class BotDJ(CommandPlugin):
     @moderator_required
     def stop(self, message, data):
         """Have the bot step down as a dj."""
+        if message:
+            return
         if not self.is_dj:
             return self.bot.reply('I am not currently DJing.', data)
         self.bot.bot.remDj()

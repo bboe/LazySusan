@@ -19,4 +19,5 @@ class CommandPlugin(Plugin):
 
 class PluginException(Exception):
     def __init__(self, message):
+        super(PluginException, self).__init__()
         self.message = message
