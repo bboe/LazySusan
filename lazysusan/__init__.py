@@ -213,6 +213,8 @@ class LazySusan(object):
 
     def process_message(self, data):
         parts = data['text'].split()
+        if not parts:
+            return
         command = parts[0]
         if len(parts) == 1:
             message = ''

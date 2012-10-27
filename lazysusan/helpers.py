@@ -5,6 +5,7 @@ from lazysusan.plugins import CommandPlugin
 
 def display_exceptions(function):
     """Expand the arguments to the functions."""
+    @wraps(function)
     def wrapper(cls, *args, **kwargs):
         try:
             return function(cls, *args, **kwargs)
