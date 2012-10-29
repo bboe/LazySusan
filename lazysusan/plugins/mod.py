@@ -1,4 +1,5 @@
-from lazysusan.helpers import display_exceptions, moderator_required
+from lazysusan.helpers import (display_exceptions, moderator_required,
+                               no_arg_command)
 from lazysusan.plugins import CommandPlugin
 
 
@@ -11,10 +12,10 @@ class BotDJ(CommandPlugin):
 
     def __init__(self, *args, **kwargs):
         super(BotDJ, self).__init__(*args, **kwargs)
-        self.bot.bot.on('add_dj', self.dj_update)
-        self.bot.bot.on('deregistered', self.dj_update)
-        self.bot.bot.on('registered', self.dj_update)
-        self.bot.bot.on('rem_dj', self.dj_update)
+        self.register('add_dj', self.dj_update)
+        self.register('deregistered', self.dj_update)
+        self.register('registered', self.dj_update)
+        self.register('rem_dj', self.dj_update)
 
     @display_exceptions
     def dj_update(self, data):
@@ -31,15 +32,16 @@ class BotDJ(CommandPlugin):
             # else in the room
             if num_djs >= self.bot.max_djs or num_listeners <= 1:
                 print 'Leaving the table'
-                self.bot.bot.remDj()
+                self.bot.api.remDj()
         else:  # Auto join conditions
             # Join the table when there are others in the room and there are
             # fewer than 2 djs (don't fill a small table)
             if num_listeners > 1 and num_djs < 2 and self.bot.max_djs > 2:
                 print 'Stepping up to DJ'
-                self.bot.bot.addDj()
+                self.bot.api.addDj()
 
     @moderator_required
+    @no_arg_command
     def play(self, message, data):
         """Attempt to have the bot dj."""
         if message:
@@ -47,14 +49,15 @@ class BotDJ(CommandPlugin):
         if self.is_dj:
             return self.bot.reply('I am already DJing.', data)
         if len(self.bot.dj_ids) < self.bot.max_djs:
-            return self.bot.bot.addDj()
+            return self.bot.api.addDj()
         self.bot.reply('I can not do that right now.', data)
 
     @moderator_required
+    @no_arg_command
     def stop(self, message, data):
         """Have the bot step down as a dj."""
         if message:
             return
         if not self.is_dj:
             return self.bot.reply('I am not currently DJing.', data)
-        self.bot.bot.remDj()
+        self.bot.api.remDj()

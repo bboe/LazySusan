@@ -41,7 +41,27 @@ def moderator_required(function):
         # Verify the user is a moderator
         if user_id not in bot.moderator_ids:
             message = 'You must be a moderator to execute that command.'
-            return bot.bot.pm(message, user_id)
+            return bot.api.pm(message, user_id)
         return function(cls, *args, **kwargs)
     wrapper.func_dict['moderator_required'] = True
+    return wrapper
+
+
+def no_arg_command(function):
+    """Indicate that the command takes an empty message."""
+    @wraps(function)
+    def wrapper(cls, *args, **kwargs):
+        if args[0]:
+            return
+        return function(cls, *args, **kwargs)
+    return wrapper
+
+
+def single_arg_command(function):
+    """Indicate that the command takes a message with a single argument."""
+    @wraps(function)
+    def wrapper(cls, *args, **kwargs):
+        if not args[0] or ' ' in args[0]:  # Input will only contain spaces
+            return
+        return function(cls, *args, **kwargs)
     return wrapper

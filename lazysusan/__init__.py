@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 import os
 import sys
-import traceback
 from ConfigParser import ConfigParser
 from lazysusan.helpers import (display_exceptions, get_sender_id,
-                               moderator_required)
+                               moderator_required, no_arg_command,
+                               single_arg_command)
 from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
 
-__version__ = '0.1rc1'
+__version__ = '0.1rc2'
 
 
 def handle_error(*args, **kwargs):
@@ -51,26 +51,29 @@ class LazySusan(object):
                 print('`{0}` is not a directory.'.format(plugin_dir))
 
         config = self._get_config(config_section)
-        self.bot = Bot(config['auth_id'], config['user_id'], config['room_id'])
-        self.bot.on('add_dj', self.handle_add_dj)
-        self.bot.on('deregistered', self.handle_user_leave)
-        self.bot.on('new_moderator', self.handle_add_moderator)
-        self.bot.on('pmmed', self.handle_pm)
-        self.bot.on('ready', self.handle_ready)
-        self.bot.on('registered', self.handle_user_join)
-        self.bot.on('rem_dj', self.handle_remove_dj)
-        self.bot.on('rem_moderator', self.handle_remove_moderator)
-        self.bot.on('roomChanged', self.handle_room_change)
-        self.bot.on('speak', self.handle_room_message)
-        self.bot.ws.on_error = handle_error
+        self._loaded_plugins = {}
+        self.api = Bot(config['auth_id'], config['user_id'], config['room_id'])
+        self.api.on('add_dj', self.handle_add_dj)
+        self.api.on('deregistered', self.handle_user_leave)
+        self.api.on('new_moderator', self.handle_add_moderator)
+        self.api.on('pmmed', self.handle_pm)
+        self.api.on('ready', self.handle_ready)
+        self.api.on('registered', self.handle_user_join)
+        self.api.on('rem_dj', self.handle_remove_dj)
+        self.api.on('rem_moderator', self.handle_remove_moderator)
+        self.api.on('roomChanged', self.handle_room_change)
+        self.api.on('speak', self.handle_room_message)
+        self.api.ws.on_error = handle_error
         self.bot_id = config['user_id']
         self.commands = {'/about': self.cmd_about,
                          '/commands': self.cmd_commands,
                          '/help': self.cmd_help,
-                         '/reload': self.cmd_reload}
+                         '/plugin_load': self.cmd_plugin_load,
+                         '/plugin_unload': self.cmd_plugin_unload,
+                         '/plugins': self.cmd_plugins}
+        self.config = config
         self.dj_ids = set()
         self.listener_ids = set()
-        self.loaded_plugins = {}
         self.max_djs = None
         self.moderator_ids = set()
         self.username = None
@@ -96,18 +99,20 @@ class LazySusan(object):
         self.commands.update(to_add)
         return True
 
+    def _unload_command_plugin(self, plugin):
+        for command in plugin.COMMANDS:
+            del self.commands[command]
+
+    @no_arg_command
     def cmd_about(self, message, data):
         """Display information about this bot."""
-        if not message.strip():
-            reply = ('I am powered by LazySusan version {0}. '
-                     'https://github.com/bboe/LazySusan'.format(__version__))
-            self.reply(reply, data)
+        reply = ('I am powered by LazySusan version {0}. '
+                 'https://github.com/bboe/LazySusan'.format(__version__))
+        self.reply(reply, data)
 
+    @no_arg_command
     def cmd_commands(self, message, data):
         """List the available commands."""
-        if message.strip():
-            return
-
         if self.is_moderator(data):  # All commands
             commands = self.commands.keys()
         else:  # Exclude moderator commands
@@ -121,7 +126,7 @@ class LazySusan(object):
 
     def cmd_help(self, message, data):
         """With no arguments, display this message. Otherwise, display the help
-        for the given command."""
+        for the given command. Type /commands to see the list of commands."""
         def docstr(item):
             lines = []
             for line in item.__doc__.split('\n'):
@@ -130,10 +135,9 @@ class LazySusan(object):
                     lines.append(line)
             return ' '.join(lines)
 
-        message = message.strip()
         if not message:
             reply = docstr(self.cmd_help)
-        elif not message.isspace():
+        elif ' ' not in message:
             if message in self.commands:
                 func = self.commands[message]
                 if func.func_dict.get('moderator_required') and \
@@ -147,15 +151,90 @@ class LazySusan(object):
         self.reply(reply, data)
 
     @moderator_required
-    def cmd_reload(self, message, data):
-        """Reload the specified plugin."""
-        self.reply('Not yet implemented.', data)
+    @single_arg_command
+    def cmd_plugin_load(self, message, data):
+        """Load the specified plugin."""
+        if message in self._loaded_plugins:
+            reply = 'Plugin `{0}` is already loaded.'.format(message)
+        elif self.load_plugin(message):
+            reply = 'Plugin `{0}` loaded.'.format(message)
+        else:
+            reply = 'Plugin `{0}` could not be loaded.'.format(message)
+        self.reply(reply, data)
+
+    @moderator_required
+    @single_arg_command
+    def cmd_plugin_unload(self, message, data):
+        """Unload the specified plugin."""
+        if message not in self._loaded_plugins:
+            reply = 'Plugin `{0}` is not loaded.'.format(message)
+        elif self.unload_plugin(message):
+            reply = 'Plugin `{0}` unloaded.'.format(message)
+        else:
+            reply = 'Plugin `{0}` could not be unloaded.'.format(message)
+        self.reply(reply, data)
+
+    @moderator_required
+    @no_arg_command
+    def cmd_plugins(self, message, data):
+        """Display the list of loaded plugins."""
+        reply = 'Loaded plugins: '
+        reply += ', '.join(sorted(self._loaded_plugins.keys()))
+        self.reply(reply, data)
 
     def is_moderator(self, item):
         """item can either be the user_id, or a dictionary from a message."""
         if isinstance(item, dict):
             item = get_sender_id(item)
         return item in self.moderator_ids
+
+    @display_exceptions
+    def handle_add_dj(self, data):
+        for user in data['user']:
+            self.dj_ids.add(user['userid'])
+
+    @display_exceptions
+    def handle_add_moderator(self, data):
+        self.moderator_ids.add(data['userid'])
+
+    @display_exceptions
+    def handle_pm(self, data):
+        self.process_message(data)
+
+    @display_exceptions
+    def handle_ready(self, _):
+        self.api.userInfo(self.set_username)
+
+    @display_exceptions
+    def handle_remove_dj(self, data):
+        for user in data['user']:
+            self.dj_ids.remove(user['userid'])
+
+    @display_exceptions
+    def handle_remove_moderator(self, data):
+        self.moderator_ids.remove(data['userid'])
+
+    @display_exceptions
+    def handle_room_change(self, data):
+        self.dj_ids = set(data['room']['metadata']['djs'])
+        self.listener_ids = set(x['userid'] for x in data['users'])
+        self.max_djs = data['room']['metadata']['max_djs']
+        self.moderator_ids = set(data['room']['metadata']['moderator_id'])
+
+    @display_exceptions
+    def handle_room_message(self, data):
+        if self.username and self.username != data['name']:
+            self.process_message(data)
+
+    @display_exceptions
+    def handle_user_join(self, data):
+        for user in data['user']:
+            self.listener_ids.add(user['userid'])
+
+    @display_exceptions
+    def handle_user_leave(self, data):
+        for user in data['user']:
+            self.listener_ids.remove(user['userid'])
 
     def load_plugin(self, plugin_name):
         parts = plugin_name.split('.')
@@ -192,57 +271,9 @@ class LazySusan(object):
         if isinstance(plugin, CommandPlugin):
             if not self._load_command_plugin(plugin):
                 return
-        self.loaded_plugins[plugin_name] = plugin
+        self._loaded_plugins[plugin_name] = plugin
         print('Loaded plugin `{0}`.'.format(plugin_name))
         return True
-
-    @display_exceptions
-    def handle_add_dj(self, data):
-        for user in data['user']:
-            self.dj_ids.add(user['userid'])
-
-    @display_exceptions
-    def handle_add_moderator(self, data):
-        self.moderator_ids.add(data['userid'])
-
-    @display_exceptions
-    def handle_pm(self, data):
-        self.process_message(data)
-
-    @display_exceptions
-    def handle_ready(self, _):
-        self.bot.userInfo(self.set_username)
-
-    @display_exceptions
-    def handle_remove_dj(self, data):
-        for user in data['user']:
-            self.dj_ids.remove(user['userid'])
-
-    @display_exceptions
-    def handle_remove_moderator(self, data):
-        self.moderator_ids.remove(data['userid'])
-
-    @display_exceptions
-    def handle_room_change(self, data):
-        self.dj_ids = set(data['room']['metadata']['djs'])
-        self.listener_ids = set(x['userid'] for x in data['users'])
-        self.max_djs = data['room']['metadata']['max_djs']
-        self.moderator_ids = set(data['room']['metadata']['moderator_id'])
-
-    @display_exceptions
-    def handle_room_message(self, data):
-        if self.username and self.username != data['name']:
-            self.process_message(data)
-
-    @display_exceptions
-    def handle_user_join(self, data):
-        for user in data['user']:
-            self.listener_ids.add(user['userid'])
-
-    @display_exceptions
-    def handle_user_leave(self, data):
-        for user in data['user']:
-            self.listener_ids.remove(user['userid'])
 
     def process_message(self, data):
         parts = data['text'].split()
@@ -260,9 +291,9 @@ class LazySusan(object):
 
     def reply(self, message, data):
         if data['command'] == 'speak':
-            self.bot.speak(message)
+            self.api.speak(message)
         elif data['command'] == 'pmmed':
-            self.bot.pm(message, data['senderid'])
+            self.api.pm(message, data['senderid'])
         else:
             raise Exception('Unrecognized command type `{0}`'
                             .format(data['command']))
@@ -271,7 +302,18 @@ class LazySusan(object):
         self.username = data['name']
 
     def start(self):
-        self.bot.start()
+        self.api.start()
+
+    def unload_plugin(self, plugin_name):
+        if plugin_name not in self._loaded_plugins:
+            return False
+        plugin = self._loaded_plugins[plugin_name]
+        if isinstance(plugin, CommandPlugin):
+            self._unload_command_plugin(plugin)
+        del self._loaded_plugins[plugin_name]
+        del plugin
+        print('Unloaded plugin `{0}`.'.format(plugin_name))
+        return True
 
 
 def main():

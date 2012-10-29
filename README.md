@@ -37,7 +37,7 @@ Then launch lazysusan via:
 ## Writing Your Own Plugins
 
 Here we will describe how to write the plugins `sample.Sample` and
-`sample.CommandSample.
+`sample.CommandSample`.
 
 #### Create the file sample.py.
 
@@ -54,7 +54,7 @@ class Sample(Plugin):
     def __init__(self, *args, **kwargs):
         super(Sample, self).__init__(*args, **kwargs)
         print('Sample loaded!')
-        self.bot.bot.on('newsong', self.handle_newsong)
+        self.register('newsong', self.handle_newsong)
 
     def handle_newsong(self, data):
         song_info = data['room']['metadata']['current_song']
