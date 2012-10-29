@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 import os
+import sys
 import traceback
 from ConfigParser import ConfigParser
 from lazysusan.helpers import (display_exceptions, get_sender_id,
                                moderator_required)
 from lazysusan.plugins import CommandPlugin
+from optparse import OptionParser
 from ttapi import Bot
 
-__version__ = '0.1beta'
+__version__ = '0.1rc1'
 
 
 def handle_error(*args, **kwargs):
@@ -15,9 +17,13 @@ def handle_error(*args, **kwargs):
     print kwargs
 
 
+class LazySusanException(Exception):
+    pass
+
+
 class LazySusan(object):
     @staticmethod
-    def _get_config(config_section):
+    def _get_config(section):
         config = ConfigParser()
         if 'APPDATA' in os.environ:  # Windows
             os_config_path = os.environ['APPDATA']
@@ -31,10 +37,19 @@ class LazySusan(object):
         if os_config_path is not None:
             locations.insert(0, os.path.join(os_config_path, 'lazysusan.ini'))
         if not config.read(locations):
-            raise Exception('No lazysusan.ini found.')
-        return dict(config.items(config_section))
+            raise LazySusanException('No lazysusan.ini found.')
+        if not config.has_section(section) and section != 'DEFAULT':
+            raise LazySusanException('No section `{0}` found in lazysusan.ini.'
+                                     .format(section))
+        return dict(config.items(section))
 
-    def __init__(self, config_section='DEFAULT'):
+    def __init__(self, config_section, plugin_dir):
+        if plugin_dir:
+            if os.path.isdir(plugin_dir):
+                sys.path.append(plugin_dir)
+            else:
+                print('`{0}` is not a directory.'.format(plugin_dir))
+
         config = self._get_config(config_section)
         self.bot = Bot(config['auth_id'], config['user_id'], config['room_id'])
         self.bot.on('add_dj', self.handle_add_dj)
@@ -60,6 +75,10 @@ class LazySusan(object):
         self.moderator_ids = set()
         self.username = None
 
+        # Load plugins after everything has been initialized
+        for plugin in config['plugins'].split('\n'):
+            self.load_plugin(plugin)
+
     def _load_command_plugin(self, plugin):
         to_add = {}
         for command, func_name in plugin.COMMANDS.items():
@@ -75,6 +94,7 @@ class LazySusan(object):
                 return False
             to_add[command] = getattr(plugin, func_name)
         self.commands.update(to_add)
+        return True
 
     def cmd_about(self, message, data):
         """Display information about this bot."""
@@ -147,21 +167,34 @@ class LazySusan(object):
             module_name = parts[0]
             class_name = parts[0].title()
 
-        # TODO: Support loading from local plugins folders
-        try:
-            module = __import__('lazysusan.plugins.{0}'.format(module_name),
-                                fromlist=[class_name])
-            plugin = getattr(module, class_name)(self)
-            plugin.__class__.NAME = plugin_name
-            if isinstance(plugin, CommandPlugin):
-                if not self._load_command_plugin(plugin):
-                    return
-            self.loaded_plugins[plugin_name] = plugin
-            return True
-        except (AttributeError, ImportError):
-            print('`{0}` is not a valid plugin'.format(plugin_name))
-            traceback.print_exc()
+        # First try to load plugins from the passed in plugins_dir and then
+        # from the lazysusan.plugins package.
+        module = None
+        for package in (None, 'lazysusan.plugins'):
+            if package:
+                module_name = '{0}.{1}'.format(package, module_name)
+            try:
+                module = __import__(module_name, fromlist=[class_name])
+                if module:
+                    break
+            except ImportError:
+                pass
+        if not module:
+            print('Cannot find plugin `{0}`.'.format(plugin_name))
             return False
+        try:
+            plugin = getattr(module, class_name)(self)
+        except AttributeError:
+            print('Cannot find plugin `{0}`.'.format(plugin_name))
+            return False
+
+        plugin.__class__.NAME = plugin_name
+        if isinstance(plugin, CommandPlugin):
+            if not self._load_command_plugin(plugin):
+                return
+        self.loaded_plugins[plugin_name] = plugin
+        print('Loaded plugin `{0}`.'.format(plugin_name))
+        return True
 
     @display_exceptions
     def handle_add_dj(self, data):
@@ -230,8 +263,6 @@ class LazySusan(object):
             self.bot.speak(message)
         elif data['command'] == 'pmmed':
             self.bot.pm(message, data['senderid'])
-        elif data['command'] == 'CLIENT_DEBUG':
-            print(message)
         else:
             raise Exception('Unrecognized command type `{0}`'
                             .format(data['command']))
@@ -244,11 +275,19 @@ class LazySusan(object):
 
 
 def main():
-    bot = LazySusan()
-    bot.load_plugin('mod.BotDJ')
-    bot.load_plugin('simple.Echo')
-    #bot.process_message({'text': '/commands', 'command': 'CLIENT_DEBUG'})
-    #bot.process_message({'text': '/echo foo', 'command': 'CLIENT_DEBUG'})
-    #bot.process_message({'text': '/botdj', 'command': 'CLIENT_DEBUG'})
-    #bot.process_message({'text': '/reload', 'command': 'CLIENT_DEBUG'})
+    parser = OptionParser(version='%prog {0}'.format(__version__))
+    parser.add_option('-c', '--config', metavar='SECTION', default='DEFAULT',
+                      help=('Select the config section to load the settings '
+                            'from.'))
+    parser.add_option('-p', '--plugin-dir', metavar='DIR',
+                      help='Specify the path to a folder containing plugins.')
+    options, _ = parser.parse_args()
+
+    try:
+        bot = LazySusan(config_section=options.config,
+                        plugin_dir=options.plugin_dir)
+    except LazySusanException as exc:
+        print(exc.message)
+        sys.exit(1)
+
     bot.start()

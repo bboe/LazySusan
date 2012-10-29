@@ -28,5 +28,4 @@ setup(name=PACKAGE_NAME,
                    'Topic :: Utilities'],
       install_requires=['ttapi>=0.1dev'],
       packages=[PACKAGE_NAME, 'lazysusan.plugins'],
-      entry_points={'console_scripts':
-                        ['lazysusan = lazysusan:main']})
+      entry_points={'console_scripts': ['lazysusan = lazysusan:main']})
