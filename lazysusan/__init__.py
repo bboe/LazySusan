@@ -68,8 +68,9 @@ class LazySusan(object):
         self.commands = {'/about': self.cmd_about,
                          '/commands': self.cmd_commands,
                          '/help': self.cmd_help,
-                         '/plugin_load': self.cmd_plugin_load,
-                         '/plugin_unload': self.cmd_plugin_unload,
+                         '/pgload': self.cmd_plugin_load,
+                         '/pgreload': self.cmd_plugin_reload,
+                         '/pgunload': self.cmd_plugin_unload,
                          '/plugins': self.cmd_plugins}
         self.config = config
         self.dj_ids = set()
@@ -156,10 +157,23 @@ class LazySusan(object):
         """Load the specified plugin."""
         if message in self._loaded_plugins:
             reply = 'Plugin `{0}` is already loaded.'.format(message)
-        elif self.load_plugin(message):
+        elif self.load_plugin(message, attempt_reload=True):
             reply = 'Plugin `{0}` loaded.'.format(message)
         else:
             reply = 'Plugin `{0}` could not be loaded.'.format(message)
+        self.reply(reply, data)
+
+    @moderator_required
+    @single_arg_command
+    def cmd_plugin_reload(self, message, data):
+        """Reoad the specified plugin."""
+        if message not in self._loaded_plugins:
+            reply = 'Plugin `{0}` is not loaded.'.format(message)
+        elif not (self.unload_plugin(message) and
+                  self.load_plugin(message, attempt_reload=True)):
+            reply = 'Plugin `{0}` could not be reloaded.'.format(message)
+        else:
+            reply = 'Plugin `{0}` reloaded.'.format(message)
         self.reply(reply, data)
 
     @moderator_required
@@ -236,7 +250,7 @@ class LazySusan(object):
         for user in data['user']:
             self.listener_ids.remove(user['userid'])
 
-    def load_plugin(self, plugin_name):
+    def load_plugin(self, plugin_name, attempt_reload=False):
         parts = plugin_name.split('.')
         if len(parts) > 1:
             module_name = '.'.join(parts[:-1])
@@ -252,12 +266,16 @@ class LazySusan(object):
         for package in (None, 'lazysusan.plugins'):
             if package:
                 module_name = '{0}.{1}'.format(package, module_name)
-            try:
-                module = __import__(module_name, fromlist=[class_name])
-                if module:
-                    break
-            except ImportError:
-                pass
+
+            if attempt_reload and module_name in sys.modules:
+                module = reload(sys.modules[module_name])
+            else:
+                try:
+                    module = __import__(module_name, fromlist=[class_name])
+                except ImportError:
+                    pass
+            if module:
+                break
         if not module:
             print('Cannot find plugin `{0}`.'.format(plugin_name))
             return False
