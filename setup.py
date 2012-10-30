@@ -12,20 +12,22 @@ VERSION = re.search("__version__ = '([^']+)'", INIT).group(1)
 
 
 setup(name=PACKAGE_NAME,
-      version=VERSION,
       author='Bryce Boe',
       author_email='bbzbryce@gmail.com',
-      url='https://github.com/bboe/lazysusan',
-      description='LazySusan is a pluginable bot for turntable.fm.',
-      long_description=README,
-      keywords='turntable bot',
       classifiers=['Environment :: Console',
+                   'License :: OSI Approved :: BSD License',
                    'Intended Audience :: Developers',
                    'Natural Language :: English',
                    'Operating System :: OS Independent',
                    'Programming Language :: Python :: 2.6',
                    'Programming Language :: Python :: 2.7',
                    'Topic :: Utilities'],
+      description='LazySusan is a pluginable bot for turntable.fm.',
+      entry_points={'console_scripts': ['lazysusan = lazysusan:main']},
       install_requires=['ttapi>=0.1dev'],
+      keywords='turntable bot',
+      license='Simplified BSD License',
+      long_description=README,
       packages=[PACKAGE_NAME, 'lazysusan.plugins'],
-      entry_points={'console_scripts': ['lazysusan = lazysusan:main']})
+      url='https://github.com/bboe/lazysusan',
+      version=VERSION)
