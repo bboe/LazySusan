@@ -1,5 +1,5 @@
 from lazysusan.helpers import (display_exceptions, moderator_required,
-                               no_arg_command)
+                               no_arg_command, single_arg_command)
 from lazysusan.plugins import CommandPlugin
 
 
@@ -99,12 +99,104 @@ class BotDJ(CommandPlugin):
 
 
 class BotPlaylist(CommandPlugin):
-    COMMANDS = {'/botq': 'queue_song'}
+    COMMANDS = {'/pladd': 'add',
+                '/plavailable': 'available',
+                '/plclear': 'clear',
+                '/pllist': 'list',
+                '/plload': 'load'}
+    PLAYLIST_PREFIX = 'botplaylist.'
+
+    def __init__(self, *args, **kwargs):
+        super(BotPlaylist, self).__init__(*args, **kwargs)
+        self.playlist = None
+        self.playlist_empty_action = None
+        self.register('roomChanged', self.room_init)
 
     @display_exceptions
     @no_arg_command
-    def queue_song(self, message, data):
+    def add(self, message, data):
         """Request that the bot add the current song to her playlist."""
-        self.bot.reply("Cool tunes, daddio.", data)
-        self.bot.api.playlistAdd(self.bot.api.currentSongId, -1)
+        if not self.bot.api.currentSongId:
+            self.bot.reply('There is no song playing.', data)
+            return
+        if self.bot.api.currentSongId in self.playlist:
+            self.bot.reply('We already have that song.', data)
+        else:
+            self.bot.reply('Cool tunes, daddio.', data)
+            self.bot.api.playlistAdd(self.bot.api.currentSongId,
+                                     len(self.playlist))
+            self.playlist.add(self.bot.api.currentSongId)
         self.bot.api.bop()
+
+    @moderator_required
+    @display_exceptions
+    @no_arg_command
+    def available(self, message, data):
+        """Output the names of the available playlists."""
+        playlists = []
+        for key in self.bot.config:
+            if key.startswith(self.PLAYLIST_PREFIX):
+                playlists.append(key[len(self.PLAYLIST_PREFIX):])
+        reply = 'Available playlists: '
+        reply += ', '.join(sorted(playlists))
+        self.bot.reply(reply, data)
+
+    @moderator_required
+    @no_arg_command
+    def clear(self, message, data):
+        """Clear the bot's playlist."""
+        if self.playlist:
+            self.bot.api.playlistRemove(0, self.clear_callback)
+
+    @display_exceptions
+    def clear_callback(self, data):
+        self.playlist.remove(data['song']['fileid'])
+        if self.playlist:  # While there are songs continue to remove
+            self.bot.api.playlistRemove(0, self.clear_callback)
+        elif self.playlist_empty_action:  # Perform possible load action
+            self.load_raw()
+
+    @display_exceptions
+    def get_playlist(self, data):
+        self.playlist = set(x['_id'] for x in data['list'])
+
+    @moderator_required
+    @no_arg_command
+    def list(self, message, data):
+        """Output the bot's current playlist to the bot's terminal."""
+        self.bot.api.playlistAll(self.list_callback)
+
+    @display_exceptions
+    def list_callback(self, data):
+        for i, item in enumerate(data['list']):
+            artist = item['metadata']['artist'].encode('utf-8')
+            song = item['metadata']['song'].encode('utf-8')
+            print('{0}. "{1}" by {2}'.format(i, song, artist))
+
+    @moderator_required
+    @display_exceptions
+    @single_arg_command
+    def load(self, message, data):
+        """Load up the specified playlist."""
+        config_name = '{0}{1}'.format(self.PLAYLIST_PREFIX, message)
+        if config_name not in self.bot.config:
+            self.bot.reply('Playlist `{0}` does not exist.'
+                           .format(config_name), data)
+            return
+        self.playlist_empty_action = config_name
+        if self.playlist:
+            self.bot.api.playlistRemove(0, self.clear_callback)
+        else:
+            self.load_raw()
+
+    @display_exceptions
+    def load_raw(self):
+        for song_id in self.bot.config[self.playlist_empty_action].split('\n'):
+            if song_id not in self.playlist:
+                self.bot.api.playlistAdd(song_id, -1)
+                self.playlist.add(song_id)
+        self.playlist_empty_action = False
+
+    @display_exceptions
+    def room_init(self, _):
+        self.bot.api.playlistAll(self.get_playlist)

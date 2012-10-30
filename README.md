@@ -1,5 +1,4 @@
-LazySusan is a pluginable bot for turntable.fm. She's currently in her early
-stages of development, so her plugin API could change.
+LazySusan is a pluginable bot for turntable.fm.
 
 ## Setup
 
