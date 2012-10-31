@@ -115,7 +115,7 @@ class BotPlaylist(CommandPlugin):
         self.register('roomChanged', self.room_init)
         self.update_request = None
         # Fetch room info if this is a reload
-        if self.bot.api.roomId:
+        if self.bot.api._isConnected:
             self.bot.api.roomInfo(self.room_init)
 
     @display_exceptions
