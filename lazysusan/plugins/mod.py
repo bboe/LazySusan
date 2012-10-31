@@ -111,9 +111,8 @@ class BotPlaylist(CommandPlugin):
     def __init__(self, *args, **kwargs):
         super(BotPlaylist, self).__init__(*args, **kwargs)
         self.playlist = None
-        self.playlist_empty_action = None
         self.register('roomChanged', self.room_init)
-        self.update_request = None
+        self.room_list = {}
         # Fetch room info if this is a reload
         if self.bot.api._isConnected:
             self.bot.api.roomInfo(self.room_init)
@@ -152,34 +151,67 @@ class BotPlaylist(CommandPlugin):
     def clear(self, message, data):
         """Clear the bot's playlist."""
         if self.playlist:
-            self.bot.api.playlistRemove(0, self.clear_callback)
+            self.bot.api.playlistRemove(0, self.clear_callback(data))
+        else:
+            self.bot.reply('The playlist is already empty.', data)
 
-    @display_exceptions
-    def clear_callback(self, data):
-        if 'song' not in data:
-            return
-        self.playlist.remove(data['song']['fileid'])
-        if self.playlist:  # While there are songs continue to remove
-            self.bot.api.playlistRemove(0, self.clear_callback)
-        elif self.playlist_empty_action:  # Perform possible load action
-            self.load_raw()
+    def clear_callback(self, caller_data, load_config=None):
+        @display_exceptions
+        def _closure(data):
+            if 'song' not in data:
+                return
+            self.playlist.remove(data['song']['fileid'])
+            if self.playlist:  # While there are songs continue to remove
+                self.bot.api.playlistRemove(0, _closure)
+            elif load_config:  # Perform possible load action
+                self.load_raw(load_config, caller_data)
+            else:
+                self.bot.reply('Playlist cleared.', caller_data)
+        return _closure
 
     @display_exceptions
     def get_playlist(self, data):
         self.playlist = set(x['_id'] for x in data['list'])
 
+    def get_roomlist(self, skip):
+        @display_exceptions
+        def _closure(data):
+            count = skip
+            for room, _ in data['rooms']:
+                count += 1
+                if count > 10 and room['metadata']['listeners'] < 10:
+                    break
+                self.room_list[room['shortcut']] = room['roomid']
+            else:
+                # Python closures are read-only so we have to recreate
+                self.bot.api.listRooms(skip=count,
+                                       callback=self.get_roomlist(count))
+                return
+        return _closure
+
     @moderator_required
     @no_arg_command
     def list(self, message, data):
-        """Output the bot's current playlist to the bot's terminal."""
-        self.bot.api.playlistAll(self.list_callback)
+        """Output the # of songs in the playlist and the first five songs."""
+        self.bot.api.playlistAll(self.list_callback(data))
 
     @display_exceptions
-    def list_callback(self, data):
-        for i, item in enumerate(data['list']):
-            artist = item['metadata']['artist'].encode('utf-8')
-            song = item['metadata']['song'].encode('utf-8')
-            print('{0}. "{1}" by {2}'.format(i, song, artist))
+    def list_callback(self, caller_data):
+        @display_exceptions
+        def _closure(data):
+            count = len(data['list'])
+            preview = []
+            for item in data['list'][:5]:
+                artist = item['metadata']['artist'].encode('utf-8')
+                song = item['metadata']['song'].encode('utf-8')
+                item = '"{0}" by {1}'.format(song, artist)
+                preview.append(item)
+            reply = 'There are {0} songs in the playlist. '.format(count)
+            if count > 0:
+                reply += 'The first {0} are: {1}'.format(len(preview),
+                                                         ', '.join(preview))
+            self.bot.reply(reply, caller_data)
+        return _closure
 
     @moderator_required
     @display_exceptions
@@ -191,41 +223,53 @@ class BotPlaylist(CommandPlugin):
             self.bot.reply('Playlist `{0}` does not exist.'
                            .format(config_name), data)
             return
-        self.playlist_empty_action = config_name
         if self.playlist:
-            self.bot.api.playlistRemove(0, self.clear_callback)
+            self.bot.api.playlistRemove(0,
+                                        self.clear_callback(data, config_name))
         else:
-            self.load_raw()
+            self.load_raw(config_name, data)
 
     @display_exceptions
-    def load_raw(self):
-        for song_id in self.bot.config[self.playlist_empty_action].split('\n'):
+    def load_raw(self, config_name, caller_data):
+        count = 0
+        for song_id in self.bot.config[config_name].split('\n'):
             if song_id not in self.playlist:
+                count += 1
                 self.bot.api.playlistAdd(song_id, -1)
                 self.playlist.add(song_id)
-        self.playlist_empty_action = False
+        self.bot.reply('Loaded {0} songs from playlist {1}.'
+                       .format(count, config_name), caller_data)
 
     @display_exceptions
     def room_init(self, _):
         self.bot.api.playlistAll(self.get_playlist)
+        self.bot.api.listRooms(skip=0, callback=self.get_roomlist(0))
 
-    @moderator_required
-    @no_arg_command
+    @single_arg_command
     @display_exceptions
     def update_playlist(self, message, data):
-        """Update the bot's playlist with songs played in this room."""
-        self.update_request = data
-        self.bot.api.roomInfo(self.update_playlist_callback)
+        """Update the bot's playlist from songs played in the provided room."""
+        if message not in self.room_list:
+            reply = 'Could not find `{0}` in the room_list. '.format(message)
+            reply += 'Perhaps try one of these: '
+            reply += ', '.join(sorted(random.sample(self.room_list, 5)))
+            self.bot.reply(reply, data)
+            return
+        room_id = self.room_list[message]
+        # Hack room info call
+        request = {'api': 'room.info', 'roomid': room_id}
+        self.bot.api._send(request, self.update_playlist_callback(data))
 
-    @display_exceptions
-    def update_playlist_callback(self, data):
-        songs = data['room']['metadata']['songlog']
-        random.shuffle(songs)
-        count = 0
-        for song in songs:
-            if song['snaggable'] and song['_id'] not in self.playlist:
-                self.bot.api.playlistAdd(song['_id'], -1)
-                self.playlist.add(song['_id'])
-                count += 1
-        self.bot.reply('Added {0} songs'.format(count), self.update_request)
-        self.update_request = None
+    def update_playlist_callback(self, caller_data):
+        @display_exceptions
+        def _closure(data):
+            songs = data['room']['metadata']['songlog']
+            random.shuffle(songs)
+            count = 0
+            for song in songs:
+                if song['snaggable'] and song['_id'] not in self.playlist:
+                    self.bot.api.playlistAdd(song['_id'], -1)
+                    self.playlist.add(song['_id'])
+                    count += 1
+            self.bot.reply('Added {0} songs'.format(count), caller_data)
+        return _closure

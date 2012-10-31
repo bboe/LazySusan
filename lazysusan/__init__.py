@@ -9,7 +9,7 @@ from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
 
-__version__ = '0.1rc3'
+__version__ = '0.1rc4'
 
 
 def handle_error(*args, **kwargs):
