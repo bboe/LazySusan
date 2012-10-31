@@ -1,3 +1,4 @@
+import random
 from lazysusan.helpers import (display_exceptions, moderator_required,
                                no_arg_command, single_arg_command)
 from lazysusan.plugins import CommandPlugin
@@ -103,7 +104,8 @@ class BotPlaylist(CommandPlugin):
                 '/plavailable': 'available',
                 '/plclear': 'clear',
                 '/pllist': 'list',
-                '/plload': 'load'}
+                '/plload': 'load',
+                '/plupdate': 'update_playlist'}
     PLAYLIST_PREFIX = 'botplaylist.'
 
     def __init__(self, *args, **kwargs):
@@ -111,6 +113,10 @@ class BotPlaylist(CommandPlugin):
         self.playlist = None
         self.playlist_empty_action = None
         self.register('roomChanged', self.room_init)
+        self.update_request = None
+        # Fetch room info if this is a reload
+        if self.bot.api.roomId:
+            self.bot.api.roomInfo(self.room_init)
 
     @display_exceptions
     @no_arg_command
@@ -150,6 +156,8 @@ class BotPlaylist(CommandPlugin):
 
     @display_exceptions
     def clear_callback(self, data):
+        if 'song' not in data:
+            return
         self.playlist.remove(data['song']['fileid'])
         if self.playlist:  # While there are songs continue to remove
             self.bot.api.playlistRemove(0, self.clear_callback)
@@ -200,3 +208,24 @@ class BotPlaylist(CommandPlugin):
     @display_exceptions
     def room_init(self, _):
         self.bot.api.playlistAll(self.get_playlist)
+
+    @moderator_required
+    @no_arg_command
+    @display_exceptions
+    def update_playlist(self, message, data):
+        """Update the bot's playlist with songs played in this room."""
+        self.update_request = data
+        self.bot.api.roomInfo(self.update_playlist_callback)
+
+    @display_exceptions
+    def update_playlist_callback(self, data):
+        songs = data['room']['metadata']['songlog']
+        random.shuffle(songs)
+        count = 0
+        for song in songs:
+            if song['snaggable'] and song['_id'] not in self.playlist:
+                self.bot.api.playlistAdd(song['_id'], -1)
+                self.playlist.add(song['_id'])
+                count += 1
+        self.bot.reply('Added {0} songs'.format(count), self.update_request)
+        self.update_request = None
