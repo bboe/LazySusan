@@ -178,6 +178,8 @@ class BotPlaylist(CommandPlugin):
         def _closure(data):
             count = skip
             for room, _ in data['rooms']:
+                if room['chatserver'] != self.bot.api.roomChatServer:
+                    continue
                 count += 1
                 if count > 10 and room['metadata']['listeners'] < 10:
                     break

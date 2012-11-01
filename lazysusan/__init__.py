@@ -9,7 +9,7 @@ from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
 
-__version__ = '0.1rc4'
+__version__ = '0.1rc5'
 
 
 def handle_error(*args, **kwargs):
@@ -52,7 +52,7 @@ class LazySusan(object):
 
         config = self._get_config(config_section)
         self._loaded_plugins = {}
-        self.api = Bot(config['auth_id'], config['user_id'], config['room_id'])
+        self.api = Bot(config['auth_id'], config['user_id'])
         self.api.on('add_dj', self.handle_add_dj)
         self.api.on('deregistered', self.handle_user_leave)
         self.api.on('new_moderator', self.handle_add_moderator)
@@ -63,10 +63,11 @@ class LazySusan(object):
         self.api.on('rem_moderator', self.handle_remove_moderator)
         self.api.on('roomChanged', self.handle_room_change)
         self.api.on('speak', self.handle_room_message)
-        self.api.ws.on_error = handle_error
         self.bot_id = config['user_id']
         self.commands = {'/about': self.cmd_about,
                          '/commands': self.cmd_commands,
+                         '/connect': self.cmd_connect,
+                         '/disconnect': self.cmd_disconnect,
                          '/help': self.cmd_help,
                          '/pgload': self.cmd_plugin_load,
                          '/pgreload': self.cmd_plugin_reload,
@@ -82,6 +83,9 @@ class LazySusan(object):
         # Load plugins after everything has been initialized
         for plugin in config['plugins'].split('\n'):
             self.load_plugin(plugin)
+
+        self.api.connect(config['room_id'])
+        self.api.ws.on_error = handle_error
 
     def _load_command_plugin(self, plugin):
         to_add = {}
@@ -139,6 +143,24 @@ class LazySusan(object):
             reply = 'Admin commands: '
             reply += ', '.join(sorted(admin_required))
             self.api.pm(reply, user_id)
+
+    @display_exceptions
+    @admin_required
+    def cmd_connect(self, message, data):
+        """Connect to the desired room_id.
+
+        With no arguments, reconnect to the default room."""
+        if not message:
+            self.api.roomRegister(self.config['room_id'])
+        elif ' ' not in message:
+            self.api.roomRegister(message)
+
+    @display_exceptions
+    @admin_required
+    @no_arg_command
+    def cmd_disconnect(self, data):
+        """Disconnect from the current room."""
+        self.api.roomDeregister()
 
     def cmd_help(self, message, data):
         """With no arguments, display this message. Otherwise, display the help
@@ -252,6 +274,11 @@ class LazySusan(object):
 
     @display_exceptions
     def handle_room_change(self, data):
+        if not data['success']:
+            print('Error changing rooms.')
+            # Try to reconnect to the main room
+            self.api.roomRegister(self.config['room_id'])
+            return
         self.dj_ids = set(data['room']['metadata']['djs'])
         self.listener_ids = set(x['userid'] for x in data['users'])
         self.max_djs = data['room']['metadata']['max_djs']
