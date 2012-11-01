@@ -2,8 +2,8 @@
 import os
 import sys
 from ConfigParser import ConfigParser
-from lazysusan.helpers import (display_exceptions, get_sender_id,
-                               moderator_required, no_arg_command,
+from lazysusan.helpers import (admin_required, display_exceptions,
+                               get_sender_id, no_arg_command,
                                single_arg_command)
 from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
@@ -105,25 +105,40 @@ class LazySusan(object):
             del self.commands[command]
 
     @no_arg_command
-    def cmd_about(self, message, data):
+    def cmd_about(self, data):
         """Display information about this bot."""
         reply = ('I am powered by LazySusan version {0}. '
                  'https://github.com/bboe/LazySusan'.format(__version__))
         self.reply(reply, data)
 
     @no_arg_command
-    def cmd_commands(self, message, data):
+    def cmd_commands(self, data):
         """List the available commands."""
-        if self.is_moderator(data):  # All commands
-            commands = self.commands.keys()
-        else:  # Exclude moderator commands
-            commands = {}
-            for command, func in self.commands.items():
-                if not func.func_dict.get('moderator_required'):
-                    commands[command] = func
+
+        admin_required = []
+        moderator_required = []
+        no_priv = []
+
+        for command, func in self.commands.items():
+            if func.func_dict.get('admin_required'):
+                admin_required.append(command)
+            elif func.func_dict.get('moderator_required'):
+                moderator_required.append(command)
+            else:
+                no_priv.append(command)
         reply = 'Available commands: '
-        reply += ', '.join(sorted(commands))
+        reply += ', '.join(sorted(no_priv))
         self.reply(reply, data)
+
+        user_id = get_sender_id(data)
+        if moderator_required and self.is_moderator(user_id):
+            reply = 'Moderator commands: '
+            reply += ', '.join(sorted(moderator_required))
+            self.api.pm(reply, user_id)
+        if admin_required and self.is_admin(user_id):
+            reply = 'Admin commands: '
+            reply += ', '.join(sorted(admin_required))
+            self.api.pm(reply, user_id)
 
     def cmd_help(self, message, data):
         """With no arguments, display this message. Otherwise, display the help
@@ -140,8 +155,9 @@ class LazySusan(object):
             reply = docstr(self.cmd_help)
         elif ' ' not in message:
             if message in self.commands:
-                func = self.commands[message]
-                if func.func_dict.get('moderator_required') and \
+                tmp = self.commands[message].func_dict
+                if tmp.get('admin_required') and not self.is_admin(data) or \
+                        tmp.get('moderator_required') and \
                         not self.is_moderator(data):
                     return
                 reply = docstr(self.commands[message])
@@ -151,7 +167,7 @@ class LazySusan(object):
             return
         self.reply(reply, data)
 
-    @moderator_required
+    @admin_required
     @single_arg_command
     def cmd_plugin_load(self, message, data):
         """Load the specified plugin."""
@@ -163,7 +179,7 @@ class LazySusan(object):
             reply = 'Plugin `{0}` could not be loaded.'.format(message)
         self.reply(reply, data)
 
-    @moderator_required
+    @admin_required
     @single_arg_command
     def cmd_plugin_reload(self, message, data):
         """Reoad the specified plugin."""
@@ -176,7 +192,7 @@ class LazySusan(object):
             reply = 'Plugin `{0}` reloaded.'.format(message)
         self.reply(reply, data)
 
-    @moderator_required
+    @admin_required
     @single_arg_command
     def cmd_plugin_unload(self, message, data):
         """Unload the specified plugin."""
@@ -188,16 +204,22 @@ class LazySusan(object):
             reply = 'Plugin `{0}` could not be unloaded.'.format(message)
         self.reply(reply, data)
 
-    @moderator_required
+    @admin_required
     @no_arg_command
-    def cmd_plugins(self, message, data):
+    def cmd_plugins(self, data):
         """Display the list of loaded plugins."""
         reply = 'Loaded plugins: '
         reply += ', '.join(sorted(self._loaded_plugins.keys()))
         self.reply(reply, data)
 
+    def is_admin(self, item):
+        """item can be either the user_id, or a dictionary from a message."""
+        if isinstance(item, dict):
+            item = get_sender_id(item)
+        return item in self.config['admin_ids']
+
     def is_moderator(self, item):
-        """item can either be the user_id, or a dictionary from a message."""
+        """item can be either the user_id, or a dictionary from a message."""
         if isinstance(item, dict):
             item = get_sender_id(item)
         return item in self.moderator_ids

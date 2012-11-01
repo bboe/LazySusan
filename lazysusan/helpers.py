@@ -3,6 +3,30 @@ from functools import wraps
 from lazysusan.plugins import CommandPlugin
 
 
+def admin_required(function):
+    """Indicate an admin is required to invoke the specified function.
+
+    Admin users are listed in lazysusan.ini under admin_ids, one per line.
+
+    If the sending user is not an admin, a private message will be returned to
+    them indicated such."""
+    @wraps(function)
+    def wrapper(cls, *args, **kwargs):
+        if isinstance(cls, CommandPlugin):
+            bot = cls.bot
+        else:  # Support the built-in commands
+            bot = cls
+
+        user_id = get_sender_id(args[1])
+        # Verify the user is a moderator
+        if user_id not in bot.config['admin_ids']:
+            message = 'You must be an admin to execute that command.'
+            return bot.api.pm(message, user_id)
+        return function(cls, *args, **kwargs)
+    wrapper.func_dict['admin_required'] = True
+    return wrapper
+
+
 def display_exceptions(function):
     """Expand the arguments to the functions."""
     @wraps(function)
@@ -48,12 +72,12 @@ def moderator_required(function):
 
 
 def no_arg_command(function):
-    """Indicate that the command takes an empty message."""
+    """Indicate that the command does not have a message."""
     @wraps(function)
     def wrapper(cls, *args, **kwargs):
         if args[0]:
             return
-        return function(cls, *args, **kwargs)
+        return function(cls, *args[1:], **kwargs)
     return wrapper
 
 

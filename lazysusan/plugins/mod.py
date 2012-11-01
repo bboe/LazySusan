@@ -29,7 +29,7 @@ class BotDJ(CommandPlugin):
 
     @display_exceptions
     @no_arg_command
-    def auto_skip(self, message, data):
+    def auto_skip(self, data):
         """Toggle whether the bot should play anything."""
         self.should_auto_skip = not self.should_auto_skip
         if self.should_auto_skip:
@@ -72,7 +72,7 @@ class BotDJ(CommandPlugin):
 
     @moderator_required
     @no_arg_command
-    def play(self, message, data):
+    def play(self, data):
         """Attempt to have the bot dj."""
         if self.is_dj:
             return self.bot.reply('I am already DJing.', data)
@@ -82,7 +82,7 @@ class BotDJ(CommandPlugin):
 
     @display_exceptions
     @no_arg_command
-    def skip_song(self, message, data):
+    def skip_song(self, data):
         """Ask the bot to skip the current song"""
         if not self.is_playing:
             self.bot.reply('I am not currently playing.', data)
@@ -92,7 +92,7 @@ class BotDJ(CommandPlugin):
 
     @moderator_required
     @no_arg_command
-    def stop(self, message, data):
+    def stop(self, data):
         """Have the bot step down as a dj."""
         if not self.is_dj:
             return self.bot.reply('I am not currently DJing.', data)
@@ -119,7 +119,7 @@ class BotPlaylist(CommandPlugin):
 
     @display_exceptions
     @no_arg_command
-    def add(self, message, data):
+    def add(self, data):
         """Request that the bot add the current song to her playlist."""
         if not self.bot.api.currentSongId:
             self.bot.reply('There is no song playing.', data)
@@ -133,10 +133,10 @@ class BotPlaylist(CommandPlugin):
             self.playlist.add(self.bot.api.currentSongId)
         self.bot.api.bop()
 
-    @moderator_required
     @display_exceptions
+    @moderator_required
     @no_arg_command
-    def available(self, message, data):
+    def available(self, data):
         """Output the names of the available playlists."""
         playlists = []
         for key in self.bot.config:
@@ -148,7 +148,7 @@ class BotPlaylist(CommandPlugin):
 
     @moderator_required
     @no_arg_command
-    def clear(self, message, data):
+    def clear(self, data):
         """Clear the bot's playlist."""
         if self.playlist:
             self.bot.api.playlistRemove(0, self.clear_callback(data))
@@ -191,11 +191,10 @@ class BotPlaylist(CommandPlugin):
 
     @moderator_required
     @no_arg_command
-    def list(self, message, data):
+    def list(self, data):
         """Output the # of songs in the playlist and the first five songs."""
         self.bot.api.playlistAll(self.list_callback(data))
 
-    @display_exceptions
     def list_callback(self, caller_data):
         @display_exceptions
         def _closure(data):
@@ -213,8 +212,8 @@ class BotPlaylist(CommandPlugin):
             self.bot.reply(reply, caller_data)
         return _closure
 
-    @moderator_required
     @display_exceptions
+    @moderator_required
     @single_arg_command
     def load(self, message, data):
         """Load up the specified playlist."""
@@ -245,8 +244,8 @@ class BotPlaylist(CommandPlugin):
         self.bot.api.playlistAll(self.get_playlist)
         self.bot.api.listRooms(skip=0, callback=self.get_roomlist(0))
 
-    @single_arg_command
     @display_exceptions
+    @single_arg_command
     def update_playlist(self, message, data):
         """Update the bot's playlist from songs played in the provided room."""
         if message not in self.room_list:
@@ -258,6 +257,7 @@ class BotPlaylist(CommandPlugin):
         room_id = self.room_list[message]
         # Hack room info call
         request = {'api': 'room.info', 'roomid': room_id}
+        self.bot.reply('Querying {0}'.format(room_id), data)
         self.bot.api._send(request, self.update_playlist_callback(data))
 
     def update_playlist_callback(self, caller_data):
@@ -265,11 +265,13 @@ class BotPlaylist(CommandPlugin):
         def _closure(data):
             songs = data['room']['metadata']['songlog']
             random.shuffle(songs)
-            count = 0
+            to_add = []
             for song in songs:
                 if song['snaggable'] and song['_id'] not in self.playlist:
-                    self.bot.api.playlistAdd(song['_id'], -1)
-                    self.playlist.add(song['_id'])
-                    count += 1
-            self.bot.reply('Added {0} songs'.format(count), caller_data)
+                    to_add.append((song.get('score'), song['_id']))
+            # Most popular songs will play first (added last)
+            for score, song_id in sorted(to_add):
+                self.bot.api.playlistAdd(song_id, 0)
+                self.playlist.add(song_id)
+            self.bot.reply('Added {0} songs'.format(len(to_add)), caller_data)
         return _closure
