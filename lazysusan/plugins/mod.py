@@ -173,7 +173,7 @@ class BotPlaylist(CommandPlugin):
     def get_playlist(self, data):
         self.playlist = set(x['_id'] for x in data['list'])
 
-    def get_roomlist(self, skip):
+    def get_room_list(self, skip):
         @display_exceptions
         def _closure(data):
             count = skip
@@ -185,7 +185,7 @@ class BotPlaylist(CommandPlugin):
             else:
                 # Python closures are read-only so we have to recreate
                 self.bot.api.listRooms(skip=count,
-                                       callback=self.get_roomlist(count))
+                                       callback=self.get_room_list(count))
                 return
         return _closure
 
@@ -242,7 +242,7 @@ class BotPlaylist(CommandPlugin):
     @display_exceptions
     def room_init(self, _):
         self.bot.api.playlistAll(self.get_playlist)
-        self.bot.api.listRooms(skip=0, callback=self.get_roomlist(0))
+        self.bot.api.listRooms(skip=0, callback=self.get_room_list(0))
 
     @display_exceptions
     @single_arg_command
@@ -269,9 +269,22 @@ class BotPlaylist(CommandPlugin):
             for song in songs:
                 if song['snaggable'] and song['_id'] not in self.playlist:
                     to_add.append((song.get('score'), song['_id']))
+            if not to_add:
+                self.bot.reply('No songs to add.', caller_data)
+                return
+
             # Most popular songs will play first (added last)
-            for score, song_id in sorted(to_add):
-                self.bot.api.playlistAdd(song_id, 0)
-                self.playlist.add(song_id)
-            self.bot.reply('Added {0} songs'.format(len(to_add)), caller_data)
+            to_add.sort()
+            num = len(to_add)
+            def callback(_):
+                if to_add:
+                    _, song_id = to_add.pop(0)
+                    self.playlist.add(song_id)
+                    self.bot.api.playlistAdd(song_id, 0, callback)
+                else:
+                    self.bot.reply('Added {0} songs'.format(num), caller_data)
+            _, song_id = to_add.pop(0)
+            self.playlist.add(song_id)
+            self.bot.api.playlistAdd(song_id, 0, callback)
+
         return _closure
