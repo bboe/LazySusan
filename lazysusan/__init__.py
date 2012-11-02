@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import logging
 import os
 import sys
 from ConfigParser import ConfigParser
@@ -43,7 +44,7 @@ class LazySusan(object):
                                      .format(section))
         return dict(config.items(section))
 
-    def __init__(self, config_section, plugin_dir):
+    def __init__(self, config_section, plugin_dir, logging):
         if plugin_dir:
             if os.path.isdir(plugin_dir):
                 sys.path.append(plugin_dir)
@@ -53,6 +54,7 @@ class LazySusan(object):
         config = self._get_config(config_section)
         self._loaded_plugins = {}
         self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.1)
+        self.api.debug = logging
         self.api.on('add_dj', self.handle_add_dj)
         self.api.on('deregistered', self.handle_user_leave)
         self.api.on('new_moderator', self.handle_add_moderator)
@@ -383,6 +385,17 @@ class LazySusan(object):
         return True
 
 
+class TruncateFormatter(logging.Formatter):
+    def __init__(self, *args, **kwargs):
+        super(TruncateFormatter, self).__init__(*args, **kwargs)
+        self.max_len = 240
+
+    def format(self, record):
+        if len(record.msg) > self.max_len:
+            record.msg = record.msg[:self.max_len - 3] + '...'
+        return super(TruncateFormatter, self).format(record)
+
+
 def main():
     parser = OptionParser(version='%prog {0}'.format(__version__))
     parser.add_option('-c', '--config', metavar='SECTION', default='DEFAULT',
@@ -390,11 +403,28 @@ def main():
                             'from.'))
     parser.add_option('-p', '--plugin-dir', metavar='DIR',
                       help='Specify the path to a folder containing plugins.')
+    parser.add_option('-l', '--log-file',
+                      help='Log all messages to the specified file.')
     options, _ = parser.parse_args()
+
+    if bool(options.log_file):
+        import logging
+        logger = logging.getLogger('turntable-api')
+        logger.setLevel(logging.DEBUG)
+
+        if options.log_file != '-':
+            handler = logging.FileHandler(options.log_file)
+        else:
+            handler = logging.StreamHandler()
+
+        formatter = TruncateFormatter('%(asctime)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
     try:
         bot = LazySusan(config_section=options.config,
-                        plugin_dir=options.plugin_dir)
+                        plugin_dir=options.plugin_dir,
+                        logging=bool(options.log_file))
     except LazySusanException as exc:
         print(exc.message)
         sys.exit(1)
