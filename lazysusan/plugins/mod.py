@@ -278,6 +278,7 @@ class BotPlaylist(CommandPlugin):
             # Most popular songs will play first (added last)
             to_add.sort()
             num = len(to_add)
+
             def callback(_):
                 if to_add:
                     _, song_id = to_add.pop(0)
