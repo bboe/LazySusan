@@ -52,7 +52,7 @@ class LazySusan(object):
 
         config = self._get_config(config_section)
         self._loaded_plugins = {}
-        self.api = Bot(config['auth_id'], config['user_id'])
+        self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.1)
         self.api.on('add_dj', self.handle_add_dj)
         self.api.on('deregistered', self.handle_user_leave)
         self.api.on('new_moderator', self.handle_add_moderator)
