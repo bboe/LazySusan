@@ -69,7 +69,7 @@ class BotDJ(CommandPlugin):
             print 'Stepping up to DJ'
             self.bot.api.addDj()
 
-    def end_song(self, data):
+    def end_song(self, _):
         if self.end_song_step_down:
             if self.should_step_down:
                 print 'Delayed leaving the table.'
@@ -77,7 +77,7 @@ class BotDJ(CommandPlugin):
             self.end_song_step_down = False
 
     @display_exceptions
-    def new_song(self, data):
+    def new_song(self, _):
         """Called when a new song starts playing."""
         num_djs = len(self.bot.dj_ids)
         if self.is_playing and self.should_auto_skip and num_djs > 1:
@@ -127,7 +127,7 @@ class BotPlaylist(CommandPlugin):
         self.register('roomChanged', self.room_init)
         self.room_list = {}
         # Fetch room info if this is a reload
-        if self.bot.api._isConnected:
+        if self.bot.api.roomId:
             self.bot.api.roomInfo(self.room_init)
 
     @display_exceptions

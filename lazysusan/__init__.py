@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+import heapq
+import json
 import logging
 import os
 import sys
+import time
 from ConfigParser import ConfigParser
+from functools import wraps
 from lazysusan.helpers import (admin_required, display_exceptions,
                                get_sender_id, no_arg_command,
                                single_arg_command)
@@ -10,7 +14,23 @@ from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
 
-__version__ = '0.1rc5'
+__version__ = '0.1rc6'
+
+
+# Monkey patch Bot.on_message for now
+def patch(function):
+    @wraps(function)
+    @display_exceptions
+    def wrapper(instance, ws, msg):
+        try:
+            obj = json.loads(msg[msg.index('{'):])
+        except ValueError:
+            obj = None
+        instance.emit('pre_message', obj)
+        function(instance, ws, msg)
+        instance.emit('post_message', obj)
+    return wrapper
+Bot.on_message = patch(Bot.on_message)
 
 
 def handle_error(*args, **kwargs):
@@ -44,7 +64,7 @@ class LazySusan(object):
                                      .format(section))
         return dict(config.items(section))
 
-    def __init__(self, config_section, plugin_dir, logging):
+    def __init__(self, config_section, plugin_dir, enable_logging):
         if plugin_dir:
             if os.path.isdir(plugin_dir):
                 sys.path.append(plugin_dir)
@@ -52,12 +72,14 @@ class LazySusan(object):
                 print('`{0}` is not a directory.'.format(plugin_dir))
 
         config = self._get_config(config_section)
+        self._delayed_events = []
         self._loaded_plugins = {}
         self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.1)
-        self.api.debug = logging
+        self.api.debug = enable_logging
         self.api.on('add_dj', self.handle_add_dj)
         self.api.on('deregistered', self.handle_user_leave)
         self.api.on('new_moderator', self.handle_add_moderator)
+        self.api.on('post_message', self.run_delayed_events)
         self.api.on('pmmed', self.handle_pm)
         self.api.on('ready', self.handle_ready)
         self.api.on('registered', self.handle_user_join)
@@ -68,9 +90,9 @@ class LazySusan(object):
         self.bot_id = config['user_id']
         self.commands = {'/about': self.cmd_about,
                          '/commands': self.cmd_commands,
-                         '/connect': self.cmd_connect,
-                         '/disconnect': self.cmd_disconnect,
                          '/help': self.cmd_help,
+                         '/join': self.cmd_join,
+                         '/leave': self.cmd_leave,
                          '/pgload': self.cmd_plugin_load,
                          '/pgreload': self.cmd_plugin_reload,
                          '/pgunload': self.cmd_plugin_unload,
@@ -121,48 +143,37 @@ class LazySusan(object):
     def cmd_commands(self, data):
         """List the available commands."""
 
-        admin_required = []
-        moderator_required = []
-        no_priv = []
+        admin_required_cmds = []
+        moderator_required_cmds = []
+        no_priv_cmds = []
 
         for command, func in self.commands.items():
             if func.func_dict.get('admin_required'):
-                admin_required.append(command)
+                admin_required_cmds.append(command)
             elif func.func_dict.get('moderator_required'):
-                moderator_required.append(command)
+                moderator_required_cmds.append(command)
             else:
-                no_priv.append(command)
+                no_priv_cmds.append(command)
         reply = 'Available commands: '
-        reply += ', '.join(sorted(no_priv))
+        reply += ', '.join(sorted(no_priv_cmds))
         self.reply(reply, data)
 
         user_id = get_sender_id(data)
-        if moderator_required and self.is_moderator(user_id):
+        if moderator_required_cmds and self.is_moderator(user_id):
             reply = 'Moderator commands: '
-            reply += ', '.join(sorted(moderator_required))
+            reply += ', '.join(sorted(moderator_required_cmds))
             self.api.pm(reply, user_id)
-        if admin_required and self.is_admin(user_id):
+        if admin_required_cmds and self.is_admin(user_id):
             reply = 'Admin commands: '
-            reply += ', '.join(sorted(admin_required))
+            reply += ', '.join(sorted(admin_required_cmds))
             self.api.pm(reply, user_id)
 
-    @display_exceptions
-    @admin_required
-    def cmd_connect(self, message, data):
-        """Connect to the desired room_id.
-
-        With no arguments, reconnect to the default room."""
-        if not message:
-            self.api.roomRegister(self.config['room_id'])
-        elif ' ' not in message:
-            self.api.roomRegister(message)
-
-    @display_exceptions
-    @admin_required
-    @no_arg_command
-    def cmd_disconnect(self, data):
-        """Disconnect from the current room."""
-        self.api.roomDeregister()
+    def _connect(self, room_id, when_connected=True):
+        if self.api.roomId == room_id or (self.api.roomId
+                                          and not when_connected):
+            return
+        print('Joining {0}'.format(room_id))
+        self.api.roomRegister(room_id)
 
     def cmd_help(self, message, data):
         """With no arguments, display this message. Otherwise, display the help
@@ -190,6 +201,36 @@ class LazySusan(object):
         else:
             return
         self.reply(reply, data)
+
+    @admin_required
+    def cmd_join(self, message, data):
+        """Join the room by room_id.
+
+        With no arguments, join the room specified in lazysusan.ini."""
+        if ' ' in message:
+            return
+        room_id = message if message else self.config['room_id']
+        if room_id == self.api.roomId:
+            self.reply('I am already in that room.', data)
+        else:
+            self._connect(room_id)
+
+    @admin_required
+    @no_arg_command
+    def cmd_leave(self, data):
+        """Leave the current room and remain connected to the chat server."""
+        def callback(cb_data):
+            user_id = get_sender_id(data)
+            if cb_data['success']:
+                # Schedule an event to possibly rejoin after 1 minute
+                self.schedule(60, self._connect, self.config['room_id'], False)
+                self.api.pm('I have left the room. If I remain roomless after '
+                            '~1 minute, I will rejoin the default room.',
+                            user_id)
+            else:
+                self.api.pm('Leaving the room failed.', user_id)
+        print('Leaving {0}'.format(self.api.roomId))
+        self.api.roomDeregister(callback)
 
     @admin_required
     @single_arg_command
@@ -248,20 +289,16 @@ class LazySusan(object):
             item = get_sender_id(item)
         return item in self.moderator_ids
 
-    @display_exceptions
     def handle_add_dj(self, data):
         for user in data['user']:
             self.dj_ids.add(user['userid'])
 
-    @display_exceptions
     def handle_add_moderator(self, data):
         self.moderator_ids.add(data['userid'])
 
-    @display_exceptions
     def handle_pm(self, data):
         self.process_message(data)
 
-    @display_exceptions
     def handle_ready(self, _):
         self.api.userInfo(self.set_username)
 
@@ -274,24 +311,22 @@ class LazySusan(object):
     def handle_remove_moderator(self, data):
         self.moderator_ids.remove(data['userid'])
 
-    @display_exceptions
     def handle_room_change(self, data):
         if not data['success']:
             print('Error changing rooms.')
-            # Try to reconnect to the main room
-            self.api.roomRegister(self.config['room_id'])
+            # Try to rejoin the default room
+            self.api.roomId = None
+            self._connect(self.config['room_id'])
             return
         self.dj_ids = set(data['room']['metadata']['djs'])
         self.listener_ids = set(x['userid'] for x in data['users'])
         self.max_djs = data['room']['metadata']['max_djs']
         self.moderator_ids = set(data['room']['metadata']['moderator_id'])
 
-    @display_exceptions
     def handle_room_message(self, data):
         if self.username and self.username != data['name']:
             self.process_message(data)
 
-    @display_exceptions
     def handle_user_join(self, data):
         for user in data['user']:
             self.listener_ids.add(user['userid'])
@@ -367,6 +402,30 @@ class LazySusan(object):
             raise Exception('Unrecognized command type `{0}`'
                             .format(data['command']))
 
+    def run_delayed_events(self, _):
+        now = time.time()
+        process = True
+        while process and self._delayed_events:
+            item = self._delayed_events[0]  # Peek at the top
+            if item[0] < now:
+                heapq.heappop(self._delayed_events)  # Actually remove
+                item[1](*item[2], **item[3])
+            else:
+                process = False
+
+    def schedule(self, min_delay, callback, *args, **kwargs):
+        """Schedule an event to occur at least min_delay seconds in the future.
+
+        The passed in callback function will be called with all remaining
+        arguments.
+
+        Scheduled events are checked and processed after every received message
+        from turntable. In an inactive room the longest duration between
+        received messages is 12 seconds."""
+        schedule_time = time.time() + min_delay
+        heapq.heappush(self._delayed_events,
+                       (schedule_time, callback, args, kwargs))
+
     def set_username(self, data):
         self.username = data['name']
 
@@ -408,7 +467,6 @@ def main():
     options, _ = parser.parse_args()
 
     if bool(options.log_file):
-        import logging
         logger = logging.getLogger('turntable-api')
         logger.setLevel(logging.DEBUG)
 
@@ -424,7 +482,7 @@ def main():
     try:
         bot = LazySusan(config_section=options.config,
                         plugin_dir=options.plugin_dir,
-                        logging=bool(options.log_file))
+                        enable_logging=bool(options.log_file))
     except LazySusanException as exc:
         print(exc.message)
         sys.exit(1)
