@@ -17,22 +17,6 @@ from ttapi import Bot
 __version__ = '0.1rc6'
 
 
-# Monkey patch Bot.on_message for now
-def patch(function):
-    @wraps(function)
-    @display_exceptions
-    def wrapper(instance, ws, msg):
-        try:
-            obj = json.loads(msg[msg.index('{'):])
-        except ValueError:
-            obj = None
-        instance.emit('pre_message', obj)
-        function(instance, ws, msg)
-        instance.emit('post_message', obj)
-    return wrapper
-Bot.on_message = patch(Bot.on_message)
-
-
 def handle_error(*args, **kwargs):
     print args
     print kwargs

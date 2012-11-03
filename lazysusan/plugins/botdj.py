@@ -170,7 +170,10 @@ class Playlist(CommandPlugin):
     def clear_callback(self, caller_data, load_config=None):
         @display_exceptions
         def _closure(data):
-            if 'song' not in data:
+            if not data['success']:
+                self.bot.reply('Failure clearing playlist. There are still '
+                               '{0} items.'.format(len(self.playlist)),
+                               caller_data)
                 return
             self.playlist.remove(data['song']['fileid'])
             if self.playlist:  # While there are songs continue to remove
@@ -267,10 +270,9 @@ class Playlist(CommandPlugin):
             self.bot.reply(reply, data)
             return
         room_id = self.room_list[message]
-        # Hack room info call
-        request = {'api': 'room.info', 'roomid': room_id}
         self.bot.reply('Querying {0}'.format(room_id), data)
-        self.bot.api._send(request, self.update_playlist_callback(data))
+        self.bot.api.roomInfo(self.update_playlist_callback(data),
+                              room_id=room_id)
 
     def update_playlist_callback(self, caller_data):
         @display_exceptions
