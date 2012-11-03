@@ -1,5 +1,5 @@
 import random
-from lazysusan.helpers import (display_exceptions, moderator_required,
+from lazysusan.helpers import (display_exceptions, admin_or_moderator_required,
                                no_arg_command, single_arg_command)
 from lazysusan.plugins import CommandPlugin
 
@@ -83,7 +83,7 @@ class BotDJ(CommandPlugin):
         if self.is_playing and self.should_auto_skip and num_djs > 1:
             self.bot.api.skip()
 
-    @moderator_required
+    @admin_or_moderator_required
     @no_arg_command
     def play(self, data):
         """Attempt to have the bot dj."""
@@ -103,7 +103,7 @@ class BotDJ(CommandPlugin):
             self.bot.api.skip()
             self.bot.reply(':poop: I was just getting into it.', data)
 
-    @moderator_required
+    @admin_or_moderator_required
     @no_arg_command
     def stop(self, data):
         """Have the bot step down as a dj."""
@@ -146,8 +146,7 @@ class BotPlaylist(CommandPlugin):
             self.playlist.add(self.bot.api.currentSongId)
         self.bot.api.bop()
 
-    @display_exceptions
-    @moderator_required
+    @admin_or_moderator_required
     @no_arg_command
     def available(self, data):
         """Output the names of the available playlists."""
@@ -159,7 +158,7 @@ class BotPlaylist(CommandPlugin):
         reply += ', '.join(sorted(playlists))
         self.bot.reply(reply, data)
 
-    @moderator_required
+    @admin_or_moderator_required
     @no_arg_command
     def clear(self, data):
         """Clear the bot's playlist."""
@@ -204,7 +203,6 @@ class BotPlaylist(CommandPlugin):
                 return
         return _closure
 
-    @moderator_required
     @no_arg_command
     def list(self, data):
         """Output the # of songs in the playlist and the first five songs."""
@@ -227,8 +225,7 @@ class BotPlaylist(CommandPlugin):
             self.bot.reply(reply, caller_data)
         return _closure
 
-    @display_exceptions
-    @moderator_required
+    @admin_or_moderator_required
     @single_arg_command
     def load(self, message, data):
         """Load up the specified playlist."""

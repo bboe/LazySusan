@@ -143,15 +143,18 @@ class LazySusan(object):
     def cmd_commands(self, data):
         """List the available commands."""
 
-        admin_required_cmds = []
-        moderator_required_cmds = []
+        admin_cmds = []
+        admin_or_moderator_cmds = []
+        moderator_cmds = []
         no_priv_cmds = []
 
         for command, func in self.commands.items():
             if func.func_dict.get('admin_required'):
-                admin_required_cmds.append(command)
+                admin_cmds.append(command)
+            elif func.func_dict.get('admin_or_moderator_required'):
+                admin_or_moderator_cmds.append(command)
             elif func.func_dict.get('moderator_required'):
-                moderator_required_cmds.append(command)
+                moderator_cmds.append(command)
             else:
                 no_priv_cmds.append(command)
         reply = 'Available commands: '
@@ -159,13 +162,18 @@ class LazySusan(object):
         self.reply(reply, data)
 
         user_id = get_sender_id(data)
-        if moderator_required_cmds and self.is_moderator(user_id):
+        if moderator_cmds and self.is_moderator(user_id):
             reply = 'Moderator commands: '
-            reply += ', '.join(sorted(moderator_required_cmds))
+            reply += ', '.join(sorted(moderator_cmds))
             self.api.pm(reply, user_id)
-        if admin_required_cmds and self.is_admin(user_id):
+        if admin_or_moderator_cmds and (self.is_moderator(user_id)
+                                        or self.is_admin(user_id)):
+            reply = 'Priviliged commands: '
+            reply += ', '.join(sorted(admin_or_moderator_cmds))
+            self.api.pm(reply, user_id)
+        if admin_cmds and self.is_admin(user_id):
             reply = 'Admin commands: '
-            reply += ', '.join(sorted(admin_required_cmds))
+            reply += ', '.join(sorted(admin_cmds))
             self.api.pm(reply, user_id)
 
     def _connect(self, room_id, when_connected=True):

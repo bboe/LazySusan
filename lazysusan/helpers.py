@@ -4,7 +4,7 @@ from lazysusan.plugins import CommandPlugin
 
 
 def admin_required(function):
-    """Indicate an admin is required to invoke the specified function.
+    """A command decorator that requires an admin to run.
 
     Admin users are listed in lazysusan.ini under admin_ids, one per line.
 
@@ -24,6 +24,31 @@ def admin_required(function):
             return bot.api.pm(message, user_id)
         return function(cls, *args, **kwargs)
     wrapper.func_dict['admin_required'] = True
+    return wrapper
+
+
+def admin_or_moderator_required(function):
+    """A command decorator that requires either an admin or a moderator to run.
+
+    If the sending user is neither an admin, nor a moderator, a private message
+    will be returned to them indicating such.
+    """
+    @wraps(function)
+    def wrapper(cls, *args, **kwargs):
+        if isinstance(cls, CommandPlugin):
+            bot = cls.bot
+        else:  # Support the built-in commands
+            bot = cls
+
+        user_id = get_sender_id(args[1])
+        # Verify the user is a moderator
+        if user_id not in bot.moderator_ids \
+                and user_id not in bot.config['admin_ids']:
+            message = ('You must be either an admin or a moderator to execute '
+                       'that command.')
+            return bot.api.pm(message, user_id)
+        return function(cls, *args, **kwargs)
+    wrapper.func_dict['admin_or_moderator_required'] = True
     return wrapper
 
 
@@ -49,7 +74,11 @@ def get_sender_id(data):
 
 
 def moderator_required(function):
-    """Indicate a moderator is required to invoke the specified function.
+    """A command decorator that requires a moderator to run.
+
+    This decorator should only be used on commands that explicitly require the
+    bot to have moderator privileges. Use the `admin_or_moderator` decorator if
+    you just want to control access to a specific command.
 
     If the sending user is not a moderator, a private message will be returned
     to them indicating such.
