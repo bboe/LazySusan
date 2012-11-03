@@ -77,6 +77,7 @@ class LazySusan(object):
         self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.1)
         self.api.debug = enable_logging
         self.api.on('add_dj', self.handle_add_dj)
+        self.api.on('booted_user', self.handle_booted_user)
         self.api.on('deregistered', self.handle_user_leave)
         self.api.on('new_moderator', self.handle_add_moderator)
         self.api.on('post_message', self.run_delayed_events)
@@ -301,6 +302,12 @@ class LazySusan(object):
         for user in data['user']:
             self.dj_ids.add(user['userid'])
 
+    def handle_booted_user(self, data):
+        if data['userid'] == self.bot_id:
+            # Try to rejoin the default room after 30 seconds.
+            self.api.roomId = None
+            self.schedule(30, self._connect, self.config['room_id'], False)
+
     def handle_add_moderator(self, data):
         self.moderator_ids.add(data['userid'])
 
@@ -321,6 +328,11 @@ class LazySusan(object):
 
     def handle_room_change(self, data):
         if not data['success']:
+            if data['errno'] == 3:
+                print('You are banned from that room. Retrying in 3 minutes.')
+                self.schedule(180, self._connect, self.config['room_id'],
+                              False)
+                return
             print('Error changing rooms.')
             # Try to rejoin the default room
             self.api.roomId = None
