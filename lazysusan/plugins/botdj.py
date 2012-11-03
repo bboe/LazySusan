@@ -4,7 +4,7 @@ from lazysusan.helpers import (display_exceptions, admin_or_moderator_required,
 from lazysusan.plugins import CommandPlugin
 
 
-class BotDJ(CommandPlugin):
+class Dj(CommandPlugin):
     COMMANDS = {'/autoskip': 'auto_skip',
                 '/djdown': 'stop',
                 '/djup': 'play',
@@ -29,7 +29,7 @@ class BotDJ(CommandPlugin):
         return self.bot.bot_id == self.bot.api.currentDjId
 
     def __init__(self, *args, **kwargs):
-        super(BotDJ, self).__init__(*args, **kwargs)
+        super(Dj, self).__init__(*args, **kwargs)
         self.end_song_step_down = False
         self.should_auto_skip = False
         self.register('add_dj', self.dj_update)
@@ -112,7 +112,7 @@ class BotDJ(CommandPlugin):
         self.bot.api.remDj()
 
 
-class BotPlaylist(CommandPlugin):
+class Playlist(CommandPlugin):
     COMMANDS = {'/pladd': 'add',
                 '/plavailable': 'available',
                 '/plclear': 'clear',
@@ -122,7 +122,7 @@ class BotPlaylist(CommandPlugin):
     PLAYLIST_PREFIX = 'botplaylist.'
 
     def __init__(self, *args, **kwargs):
-        super(BotPlaylist, self).__init__(*args, **kwargs)
+        super(Playlist, self).__init__(*args, **kwargs)
         self.playlist = None
         self.register('roomChanged', self.room_init)
         self.room_list = {}
