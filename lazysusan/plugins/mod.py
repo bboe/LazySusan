@@ -11,6 +11,16 @@ class BotDJ(CommandPlugin):
                 '/skip': 'skip_song'}
 
     @property
+    def should_step_down(self):
+        return self.is_dj and (len(self.bot.listener_ids) <= 1
+                               or len(self.bot.dj_ids) >= self.bot.max_djs)
+
+    @property
+    def should_step_up(self):
+        return (not self.is_dj and len(self.bot.listener_ids) > 1
+                and len(self.bot.dj_ids) < min(2, self.bot.max_djs - 1))
+
+    @property
     def is_dj(self):
         return self.bot.bot_id in self.bot.dj_ids
 
@@ -20,9 +30,11 @@ class BotDJ(CommandPlugin):
 
     def __init__(self, *args, **kwargs):
         super(BotDJ, self).__init__(*args, **kwargs)
+        self.end_song_step_down = False
         self.should_auto_skip = False
         self.register('add_dj', self.dj_update)
         self.register('deregistered', self.dj_update)
+        self.register('endsong', self.end_song)
         self.register('newsong', self.new_song)
         self.register('registered', self.dj_update)
         self.register('rem_dj', self.dj_update)
@@ -47,21 +59,22 @@ class BotDJ(CommandPlugin):
                     self.should_auto_skip = False
                 return  # Ignore updates from the bot
 
-        num_djs = len(self.bot.dj_ids)
-        num_listeners = len(self.bot.listener_ids)
-
-        if self.is_dj:  # Auto leave conditions
-            # Leave the table if there is no space left or when there is no one
-            # else in the room
-            if num_djs >= self.bot.max_djs or num_listeners <= 1:
+        if self.should_step_down:
+            if self.is_playing:
+                self.end_song_step_down = True
+            else:
                 print 'Leaving the table'
                 self.bot.api.remDj()
-        else:  # Auto join conditions
-            # Join the table when there are others in the room and there are
-            # fewer than 2 djs (don't fill a small table)
-            if num_listeners > 1 and num_djs < 2 and self.bot.max_djs > 2:
-                print 'Stepping up to DJ'
-                self.bot.api.addDj()
+        elif self.should_step_up:
+            print 'Stepping up to DJ'
+            self.bot.api.addDj()
+
+    def end_song(self, data):
+        if self.end_song_step_down:
+            if self.should_step_down:
+                print 'Delayed leaving the table.'
+                self.bot.api.remDj()
+            self.end_song_step_down = False
 
     @display_exceptions
     def new_song(self, data):
