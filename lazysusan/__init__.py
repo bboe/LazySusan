@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 import heapq
-import json
 import logging
 import os
 import sys
 import time
 from ConfigParser import ConfigParser
-from functools import wraps
 from lazysusan.helpers import (admin_required, display_exceptions,
                                get_sender_id, no_arg_command,
                                single_arg_command)
@@ -15,7 +13,7 @@ from optparse import OptionParser
 from ttapi import Bot
 from update_checker import UpdateChecker
 
-__version__ = '0.1rc6'
+__version__ = '0.1rc7'
 
 
 def handle_error(*args, **kwargs):
@@ -335,6 +333,7 @@ class LazySusan(object):
         self.max_djs = data['room']['metadata']['max_djs']
         self.moderator_ids = set(data['room']['metadata']['moderator_id'])
 
+    @display_exceptions
     def handle_room_message(self, data):
         if self.username and self.username != data['name']:
             self.process_message(data)

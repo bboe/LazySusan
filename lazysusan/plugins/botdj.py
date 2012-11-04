@@ -39,7 +39,6 @@ class Dj(CommandPlugin):
         self.register('registered', self.dj_update)
         self.register('rem_dj', self.dj_update)
 
-    @display_exceptions
     @no_arg_command
     def auto_skip(self, data):
         """Toggle whether the bot should play anything."""
@@ -93,7 +92,6 @@ class Dj(CommandPlugin):
             return self.bot.api.addDj()
         self.bot.reply('I can not do that right now.', data)
 
-    @display_exceptions
     @no_arg_command
     def skip_song(self, data):
         """Ask the bot to skip the current song"""
@@ -118,6 +116,7 @@ class Playlist(CommandPlugin):
                 '/plclear': 'clear',
                 '/pllist': 'list',
                 '/plload': 'load',
+                '/plskip': 'skip_next',
                 '/plupdate': 'update_playlist'}
     PLAYLIST_PREFIX = 'botplaylist.'
 
@@ -130,7 +129,6 @@ class Playlist(CommandPlugin):
         if self.bot.api.roomId:
             self.bot.api.roomInfo(self.room_init)
 
-    @display_exceptions
     @no_arg_command
     def add(self, data):
         """Request that the bot add the current song to her playlist."""
@@ -167,7 +165,7 @@ class Playlist(CommandPlugin):
         else:
             self.bot.reply('The playlist is already empty.', data)
 
-    def clear_callback(self, caller_data, load_config=None):
+    def clear_callback(self, caller_data, complete_callback=None):
         @display_exceptions
         def _closure(data):
             if not data['success']:
@@ -178,8 +176,8 @@ class Playlist(CommandPlugin):
             self.playlist.remove(data['song']['fileid'])
             if self.playlist:  # While there are songs continue to remove
                 self.bot.api.playlistRemove(0, _closure)
-            elif load_config:  # Perform possible load action
-                self.load_raw(load_config, caller_data)
+            elif complete_callback:  # Perform completion action
+                complete_callback()
             else:
                 self.bot.reply('Playlist cleared.', caller_data)
         return _closure
@@ -209,60 +207,101 @@ class Playlist(CommandPlugin):
     @no_arg_command
     def list(self, data):
         """Output the # of songs in the playlist and the first five songs."""
-        self.bot.api.playlistAll(self.list_callback(data))
-
-    def list_callback(self, caller_data):
         @display_exceptions
-        def _closure(data):
-            count = len(data['list'])
+        def callback(cb_data):
             preview = []
-            for item in data['list'][:5]:
+            self.playlist = set()
+            for item in cb_data['list']:
+                self.playlist.add(item['_id'])
                 artist = item['metadata']['artist'].encode('utf-8')
                 song = item['metadata']['song'].encode('utf-8')
                 item = '"{0}" by {1}'.format(song, artist)
-                preview.append(item)
-            reply = 'There are {0} songs in the playlist. '.format(count)
-            if count > 0:
+                if len(preview) < 5:
+                    preview.append(item)
+            reply = ('There are {0} songs in the playlist. '
+                     .format(len(self.playlist)))
+            if preview:
                 reply += 'The first {0} are: {1}'.format(len(preview),
                                                          ', '.join(preview))
-            self.bot.reply(reply, caller_data)
-        return _closure
+            self.bot.reply(reply, data)
+        self.bot.api.playlistAll(callback)
 
     @admin_or_moderator_required
     @single_arg_command
     def load(self, message, data):
         """Load up the specified playlist."""
+        def callback(cb_data=None):
+            if cb_data and not cb_data['success']:
+                self.bot.reply('Failed loading all of playlist {0}'
+                               .format(message), data)
+                return
+            while song_ids:
+                song_id = song_ids.pop(0)
+                if song_id not in self.playlist:
+                    self.playlist.add(song_id)
+                    self.bot.api.playlistAdd(song_id, len(self.playlist) - 1,
+                                             callback)
+                    break
+            else:
+                self.bot.reply('Loaded {0} songs from playlist {1}.'
+                               .format(len(self.playlist), message), data)
+
         config_name = '{0}{1}'.format(self.PLAYLIST_PREFIX, message)
         if config_name not in self.bot.config:
             self.bot.reply('Playlist `{0}` does not exist.'
                            .format(config_name), data)
             return
+        song_ids = self.bot.config[config_name].split('\n')
         if self.playlist:
-            self.bot.api.playlistRemove(0,
-                                        self.clear_callback(data, config_name))
+            self.bot.api.playlistRemove(0, self.clear_callback(data, callback))
         else:
-            self.load_raw(config_name, data)
+            callback()
 
-    @display_exceptions
-    def load_raw(self, config_name, caller_data):
-        count = 0
-        for song_id in self.bot.config[config_name].split('\n'):
-            if song_id not in self.playlist:
-                count += 1
-                self.bot.api.playlistAdd(song_id, -1)
-                self.playlist.add(song_id)
-        self.bot.reply('Loaded {0} songs from playlist {1}.'
-                       .format(count, config_name), caller_data)
-
-    @display_exceptions
     def room_init(self, _):
         self.bot.api.playlistAll(self.get_playlist)
         self.bot.api.listRooms(skip=0, callback=self.get_room_list(0))
 
-    @display_exceptions
+    @no_arg_command
+    def skip_next(self, data):
+        """Skip to the next song in the bot's playlist.
+
+        Note: This will not affect the currently playing song."""
+        def callback(cb_data):
+            if cb_data['success']:
+                self.bot.reply('Next song skipped.', data)
+            else:
+                self.bot.reply('Error skipping next song.', data)
+        self.bot.api.playlistReorder(0, len(self.playlist) - 1, callback)
+
     @single_arg_command
     def update_playlist(self, message, data):
         """Update the bot's playlist from songs played in the provided room."""
+        def room_info_callback(cb_data):
+            songs = cb_data['room']['metadata']['songlog']
+            random.shuffle(songs)
+            to_add = []
+            for song in songs:
+                if song['snaggable'] and song['_id'] not in self.playlist:
+                    to_add.append((song.get('score'), song['_id']))
+            if not to_add:
+                self.bot.reply('No songs to add.', data)
+                return
+
+            # Most popular songs will play first (added last)
+            to_add.sort()
+            num = len(to_add)
+
+            def add_song_callback(_):
+                if to_add:
+                    _, song_id = to_add.pop(0)
+                    self.playlist.add(song_id)
+                    self.bot.api.playlistAdd(song_id, 0, add_song_callback)
+                else:
+                    self.bot.reply('Added {0} songs'.format(num), data)
+            _, song_id = to_add.pop(0)
+            self.playlist.add(song_id)
+            self.bot.api.playlistAdd(song_id, 0, add_song_callback)
+
         if message not in self.room_list:
             reply = 'Could not find `{0}` in the room_list. '.format(message)
             reply += 'Perhaps try one of these: '
@@ -271,35 +310,4 @@ class Playlist(CommandPlugin):
             return
         room_id = self.room_list[message]
         self.bot.reply('Querying {0}'.format(room_id), data)
-        self.bot.api.roomInfo(self.update_playlist_callback(data),
-                              room_id=room_id)
-
-    def update_playlist_callback(self, caller_data):
-        @display_exceptions
-        def _closure(data):
-            songs = data['room']['metadata']['songlog']
-            random.shuffle(songs)
-            to_add = []
-            for song in songs:
-                if song['snaggable'] and song['_id'] not in self.playlist:
-                    to_add.append((song.get('score'), song['_id']))
-            if not to_add:
-                self.bot.reply('No songs to add.', caller_data)
-                return
-
-            # Most popular songs will play first (added last)
-            to_add.sort()
-            num = len(to_add)
-
-            def callback(_):
-                if to_add:
-                    _, song_id = to_add.pop(0)
-                    self.playlist.add(song_id)
-                    self.bot.api.playlistAdd(song_id, 0, callback)
-                else:
-                    self.bot.reply('Added {0} songs'.format(num), caller_data)
-            _, song_id = to_add.pop(0)
-            self.playlist.add(song_id)
-            self.bot.api.playlistAdd(song_id, 0, callback)
-
-        return _closure
+        self.bot.api.roomInfo(room_info_callback, room_id=room_id)

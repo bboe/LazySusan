@@ -55,9 +55,9 @@ def admin_or_moderator_required(function):
 def display_exceptions(function):
     """Expand the arguments to the functions."""
     @wraps(function)
-    def wrapper(cls, *args, **kwargs):
+    def wrapper(*args, **kwargs):
         try:
-            return function(cls, *args, **kwargs)
+            return function(*args, **kwargs)
         except:
             traceback.print_exc()
     return wrapper
