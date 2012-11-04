@@ -13,6 +13,7 @@ from lazysusan.helpers import (admin_required, display_exceptions,
 from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
+from update_checker import UpdateChecker
 
 __version__ = '0.1rc6'
 
@@ -27,6 +28,8 @@ class LazySusanException(Exception):
 
 
 class LazySusan(object):
+    update_checked = False
+
     @staticmethod
     def _get_config(section):
         config = ConfigParser()
@@ -49,6 +52,11 @@ class LazySusan(object):
         return dict(config.items(section))
 
     def __init__(self, config_section, plugin_dir, enable_logging):
+        if not self.update_checked:
+            checker = UpdateChecker()
+            checker.output(__name__, __version__)
+            self.update_checked = True
+
         if plugin_dir:
             if os.path.isdir(plugin_dir):
                 sys.path.append(plugin_dir)
