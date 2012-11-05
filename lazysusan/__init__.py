@@ -11,9 +11,9 @@ from lazysusan.helpers import (admin_required, display_exceptions,
 from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
-from update_checker import UpdateChecker
+from update_checker import update_check
 
-__version__ = '0.1rc7'
+__version__ = '0.1rc8'
 
 
 def handle_error(*args, **kwargs):
@@ -51,8 +51,7 @@ class LazySusan(object):
 
     def __init__(self, config_section, plugin_dir, enable_logging):
         if not self.update_checked:
-            checker = UpdateChecker()
-            checker.output(__name__, __version__)
+            update_check(__name__, __version__)
             self.update_checked = True
 
         if plugin_dir:
