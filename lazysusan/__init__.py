@@ -13,7 +13,7 @@ from optparse import OptionParser
 from ttapi import Bot
 from update_checker import update_check
 
-__version__ = '0.1rc8'
+__version__ = '0.1rc9'
 
 
 def handle_error(*args, **kwargs):
@@ -63,7 +63,7 @@ class LazySusan(object):
         config = self._get_config(config_section)
         self._delayed_events = []
         self._loaded_plugins = {}
-        self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.1)
+        self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.4)
         self.api.debug = enable_logging
         self.api.on('add_dj', self.handle_add_dj)
         self.api.on('booted_user', self.handle_booted_user)

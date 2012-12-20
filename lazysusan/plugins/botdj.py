@@ -174,12 +174,17 @@ class Playlist(CommandPlugin):
                                caller_data)
                 return
             self.playlist.remove(data['song']['fileid'])
+            removed = original_count - len(self.playlist)
+            if removed % 30 == 0:
+                self.bot.reply('Removed {0} of {1} songs so far.'
+                               .format(removed, original_count), caller_data)
             if self.playlist:  # While there are songs continue to remove
                 self.bot.api.playlistRemove(0, _closure)
             elif complete_callback:  # Perform completion action
                 complete_callback()
             else:
                 self.bot.reply('Playlist cleared.', caller_data)
+        original_count = len(self.playlist)
         return _closure
 
     @display_exceptions
