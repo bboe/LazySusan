@@ -5,15 +5,16 @@ import os
 import sys
 import time
 from ConfigParser import ConfigParser
+from datetime import datetime
 from lazysusan.helpers import (admin_required, display_exceptions,
                                get_sender_id, no_arg_command,
                                single_arg_command)
 from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
-from update_checker import update_check
+from update_checker import pretty_date, update_check
 
-__version__ = '0.1rc9'
+__version__ = '0.1rc10'
 
 
 def handle_error(*args, **kwargs):
@@ -54,6 +55,8 @@ class LazySusan(object):
             update_check(__name__, __version__)
             self.update_checked = True
 
+        self.start_time = datetime.utcnow()
+
         if plugin_dir:
             if os.path.isdir(plugin_dir):
                 sys.path.append(plugin_dir)
@@ -63,7 +66,7 @@ class LazySusan(object):
         config = self._get_config(config_section)
         self._delayed_events = []
         self._loaded_plugins = {}
-        self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.4)
+        self.api = Bot(config['auth_id'], config['user_id'], rate_limit=0.575)
         self.api.debug = enable_logging
         self.api.on('add_dj', self.handle_add_dj)
         self.api.on('booted_user', self.handle_booted_user)
@@ -86,7 +89,8 @@ class LazySusan(object):
                          '/pgload': self.cmd_plugin_load,
                          '/pgreload': self.cmd_plugin_reload,
                          '/pgunload': self.cmd_plugin_unload,
-                         '/plugins': self.cmd_plugins}
+                         '/plugins': self.cmd_plugins,
+                         '/uptime': self.cmd_uptime}
         self.config = config
         self.dj_ids = set()
         self.listener_ids = set()
@@ -274,6 +278,12 @@ class LazySusan(object):
         reply = 'Loaded plugins: '
         reply += ', '.join(sorted(self._loaded_plugins.keys()))
         self.reply(reply, data)
+
+    @no_arg_command
+    def cmd_uptime(self, data):
+        """Display how long since LazySusan was started."""
+        msg = 'LazySusan was started {0}'.format(pretty_date(self.start_time))
+        self.reply(msg, data)
 
     def is_admin(self, item):
         """item can be either the user_id, or a dictionary from a message."""

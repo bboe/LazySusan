@@ -173,7 +173,7 @@ class Playlist(CommandPlugin):
                                '{0} items.'.format(len(self.playlist)),
                                caller_data)
                 return
-            self.playlist.remove(data['song']['fileid'])
+            self.playlist.remove(data['song_dict'][0]['fileid'])
             removed = original_count - len(self.playlist)
             if removed % 30 == 0:
                 self.bot.reply('Removed {0} of {1} songs so far.'
