@@ -113,10 +113,14 @@ class Dj(CommandPlugin):
 class Playlist(CommandPlugin):
     COMMANDS = {'/pladd': 'add',
                 '/plavailable': 'available',
+                '/playlists': 'list_playlists',
                 '/plclear': 'clear',
+                '/plcreate': 'create',
+                '/pldelete': 'delete',
                 '/pllist': 'list',
                 '/plload': 'load',
                 '/plskip': 'skip_next',
+                '/plswitch': 'switch',
                 '/plupdate': 'update_playlist'}
     PLAYLIST_PREFIX = 'botplaylist.'
 
@@ -131,7 +135,7 @@ class Playlist(CommandPlugin):
 
     @no_arg_command
     def add(self, data):
-        """Request that the bot add the current song to her playlist."""
+        """Add the current song to the bot's default playlist."""
         if not self.bot.api.currentSongId:
             self.bot.reply('There is no song playing.', data)
             return
@@ -147,7 +151,7 @@ class Playlist(CommandPlugin):
     @admin_or_moderator_required
     @no_arg_command
     def available(self, data):
-        """Output the names of the available playlists."""
+        """Output the names of the available playlists (local)."""
         playlists = []
         for key in self.bot.config:
             if key.startswith(self.PLAYLIST_PREFIX):
@@ -186,6 +190,28 @@ class Playlist(CommandPlugin):
                 self.bot.reply('Playlist cleared.', caller_data)
         original_count = len(self.playlist)
         return _closure
+
+    @single_arg_command
+    def create(self, message, data):
+        """Create a playlist."""
+        def callback(cb_data):
+            if cb_data['success']:
+                reply = 'Created playlist {0}'.format(cb_data['playlist_name'])
+            else:
+                reply = cb_data['err']
+            self.bot.reply(reply, data)
+        self.bot.api.playlistCreate(message, callback)
+
+    @single_arg_command
+    def delete(self, message, data):
+        """Delete a playlist."""
+        def callback(cb_data):
+            if cb_data['success']:
+                reply = 'Deleted playlist {0}'.format(cb_data['playlist_name'])
+            else:
+                reply = cb_data['err']
+            self.bot.reply(reply, data)
+        self.bot.api.playlistDelete(message, callback)
 
     @display_exceptions
     def get_playlist(self, data):
@@ -230,6 +256,16 @@ class Playlist(CommandPlugin):
                                                          ', '.join(preview))
             self.bot.reply(reply, data)
         self.bot.api.playlistAll(callback)
+
+    @no_arg_command
+    def list_playlists(self, data):
+        """List the available playlists (remote)."""
+        @display_exceptions
+        def callback(cb_data):
+            reply = 'Available playlists: {0}'.format(
+                ', '.join(x['name'] for x in cb_data['list']))
+            self.bot.reply(reply, data)
+        self.bot.api.playlistListAll(callback)
 
     @admin_or_moderator_required
     @single_arg_command
@@ -277,6 +313,18 @@ class Playlist(CommandPlugin):
             else:
                 self.bot.reply('Error skipping next song.', data)
         self.bot.api.playlistReorder(0, len(self.playlist) - 1, callback)
+
+    @single_arg_command
+    def switch(self, message, data):
+        """Switch to the specified playlist."""
+        def callback(cb_data):
+            if cb_data['success']:
+                reply = 'Switched to playlist {0}'.format(
+                    cb_data['playlist_name'])
+            else:
+                reply = cb_data['err']
+            self.bot.reply(reply, data)
+        self.bot.api.playlistSwitch(message, callback)
 
     @single_arg_command
     def update_playlist(self, message, data):
