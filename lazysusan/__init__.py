@@ -14,7 +14,7 @@ from optparse import OptionParser
 from ttapi import Bot
 from update_checker import pretty_date, update_check
 
-__version__ = '0.1rc10'
+__version__ = '0.1rc11'
 
 
 def handle_error(*args, **kwargs):
