@@ -127,25 +127,43 @@ class Playlist(CommandPlugin):
     def __init__(self, *args, **kwargs):
         super(Playlist, self).__init__(*args, **kwargs)
         self.playlist = None
-        self.register('roomChanged', self.room_init)
+        self.playlists = {}
+        self.register('roomChanged', self._room_init)
         self.room_list = {}
         # Fetch room info if this is a reload
         if self.bot.api.roomId:
-            self.bot.api.roomInfo(self.room_init)
+            self.bot.api.roomInfo(self._room_init)
+
+    def _room_init(self, _):
+        """Initialization that must wait until connected to a room."""
+        if not self.playlist:
+            self.bot.api.playlistListAll(self._playlist_init)
+        self.bot.api.listRooms(skip=0, callback=self.get_room_list(0))
+
+    def _playlist_init(self, data):
+        for item in data['list']:
+            self.playlists[item['name']] = set()
+            if item['active']:
+                self.playlist = item['name']
+        self.bot.api.playlistAll(self.playlist, self._playlist_info)
+
+    def _playlist_info(self, data):
+        self.playlists[self.playlist] = set(x['_id'] for x in data['list'])
 
     @no_arg_command
     def add(self, data):
-        """Add the current song to the bot's default playlist."""
+        """Add the current song to the bot's current playlist."""
         if not self.bot.api.currentSongId:
             self.bot.reply('There is no song playing.', data)
             return
-        if self.bot.api.currentSongId in self.playlist:
+        playlist = self.playlists[self.playlist]
+        if self.bot.api.currentSongId in playlist:
             self.bot.reply('We already have that song.', data)
         else:
             self.bot.reply('Cool tunes, daddio.', data)
-            self.bot.api.playlistAdd(self.bot.api.currentSongId,
-                                     len(self.playlist))
-            self.playlist.add(self.bot.api.currentSongId)
+            self.bot.api.playlistAdd(self.playlist, self.bot.api.currentSongId,
+                                     len(playlist))
+            playlist.add(self.bot.api.currentSongId)
         self.bot.api.bop()
 
     @admin_or_moderator_required
@@ -163,32 +181,38 @@ class Playlist(CommandPlugin):
     @admin_or_moderator_required
     @no_arg_command
     def clear(self, data):
-        """Clear the bot's playlist."""
-        if self.playlist:
-            self.bot.api.playlistRemove(0, self.clear_callback(data))
+        """Clear the bot's playlist.
+
+        TODO: Delete and recreate if not default playlist.
+
+        """
+        if self.playlists[self.playlist]:
+            self.bot.api.playlistRemove(self.playlist, 0,
+                                        self.clear_callback(data))
         else:
             self.bot.reply('The playlist is already empty.', data)
 
     def clear_callback(self, caller_data, complete_callback=None):
+        playlist = self.playlists[self.playlist]
         @display_exceptions
         def _closure(data):
             if not data['success']:
                 self.bot.reply('Failure clearing playlist. There are still '
-                               '{0} items.'.format(len(self.playlist)),
+                               '{0} items.'.format(len(playlist)),
                                caller_data)
                 return
-            self.playlist.remove(data['song_dict'][0]['fileid'])
-            removed = original_count - len(self.playlist)
+            playlist.remove(data['song_dict'][0]['fileid'])
+            removed = original_count - len(playlist)
             if removed % 30 == 0:
                 self.bot.reply('Removed {0} of {1} songs so far.'
                                .format(removed, original_count), caller_data)
-            if self.playlist:  # While there are songs continue to remove
-                self.bot.api.playlistRemove(0, _closure)
+            if playlist:  # While there are songs continue to remove
+                self.bot.api.playlistRemove(self.playlist, 0, _closure)
             elif complete_callback:  # Perform completion action
                 complete_callback()
             else:
                 self.bot.reply('Playlist cleared.', caller_data)
-        original_count = len(self.playlist)
+        original_count = len(playlist)
         return _closure
 
     @single_arg_command
@@ -197,6 +221,7 @@ class Playlist(CommandPlugin):
         def callback(cb_data):
             if cb_data['success']:
                 reply = 'Created playlist {0}'.format(cb_data['playlist_name'])
+                self.playlists[message] = None
             else:
                 reply = cb_data['err']
             self.bot.reply(reply, data)
@@ -208,14 +233,11 @@ class Playlist(CommandPlugin):
         def callback(cb_data):
             if cb_data['success']:
                 reply = 'Deleted playlist {0}'.format(cb_data['playlist_name'])
+                del self.playlists[message]
             else:
                 reply = cb_data['err']
             self.bot.reply(reply, data)
         self.bot.api.playlistDelete(message, callback)
-
-    @display_exceptions
-    def get_playlist(self, data):
-        self.playlist = set(x['_id'] for x in data['list'])
 
     def get_room_list(self, skip):
         @display_exceptions
@@ -241,21 +263,22 @@ class Playlist(CommandPlugin):
         @display_exceptions
         def callback(cb_data):
             preview = []
-            self.playlist = set()
+            playlist = set()
             for item in cb_data['list']:
-                self.playlist.add(item['_id'])
+                playlist.add(item['_id'])
                 artist = item['metadata']['artist'].encode('utf-8')
                 song = item['metadata']['song'].encode('utf-8')
                 item = '"{0}" by {1}'.format(song, artist)
                 if len(preview) < 5:
                     preview.append(item)
             reply = ('There are {0} songs in the playlist. '
-                     .format(len(self.playlist)))
+                     .format(len(playlist)))
             if preview:
                 reply += 'The first {0} are: {1}'.format(len(preview),
                                                          ', '.join(preview))
+            self.playlists[self.playlist] = playlist
             self.bot.reply(reply, data)
-        self.bot.api.playlistAll(callback)
+        self.bot.api.playlistAll(self.playlist, callback)
 
     @no_arg_command
     def list_playlists(self, data):
@@ -270,7 +293,9 @@ class Playlist(CommandPlugin):
     @admin_or_moderator_required
     @single_arg_command
     def load(self, message, data):
-        """Load up the specified playlist."""
+        """Load up the specified playlist into the current remote playlist."""
+        self.bot.reply('This feature currently does not work.')
+        return
         def callback(cb_data=None):
             if cb_data and not cb_data['success']:
                 self.bot.reply('Failed loading all of playlist {0}'
@@ -298,29 +323,30 @@ class Playlist(CommandPlugin):
         else:
             callback()
 
-    def room_init(self, _):
-        self.bot.api.playlistAll(self.get_playlist)
-        self.bot.api.listRooms(skip=0, callback=self.get_room_list(0))
-
     @no_arg_command
     def skip_next(self, data):
         """Skip to the next song in the bot's playlist.
 
-        Note: This will not affect the currently playing song."""
+        Note: This will not affect the currently playing song.
+
+        """
         def callback(cb_data):
             if cb_data['success']:
                 self.bot.reply('Next song skipped.', data)
             else:
                 self.bot.reply('Error skipping next song.', data)
-        self.bot.api.playlistReorder(0, len(self.playlist) - 1, callback)
+        self.bot.api.playlistReorder(self.playlist, 0,
+                                     len(self.playlists[self.playlist]) - 1,
+                                     callback)
 
     @single_arg_command
     def switch(self, message, data):
         """Switch to the specified playlist."""
         def callback(cb_data):
             if cb_data['success']:
-                reply = 'Switched to playlist {0}'.format(
-                    cb_data['playlist_name'])
+                self.playlist = cb_data['playlist_name']
+                reply = 'Switched to playlist {0}'.format(self.playlist)
+                self.bot.api.playlistAll(self.playlist, self._playlist_info)
             else:
                 reply = cb_data['err']
             self.bot.reply(reply, data)
@@ -329,12 +355,13 @@ class Playlist(CommandPlugin):
     @single_arg_command
     def update_playlist(self, message, data):
         """Update the bot's playlist from songs played in the provided room."""
+        playlist = self.playlists[self.playlist]
+
         def room_info_callback(cb_data):
             songs = cb_data['room']['metadata']['songlog']
-            random.shuffle(songs)
             to_add = []
             for song in songs:
-                if song['snaggable'] and song['_id'] not in self.playlist:
+                if song['_id'] not in playlist:
                     to_add.append((song.get('score'), song['_id']))
             if not to_add:
                 self.bot.reply('No songs to add.', data)
@@ -347,13 +374,15 @@ class Playlist(CommandPlugin):
             def add_song_callback(_):
                 if to_add:
                     _, song_id = to_add.pop(0)
-                    self.playlist.add(song_id)
-                    self.bot.api.playlistAdd(song_id, 0, add_song_callback)
+                    playlist.add(song_id)
+                    self.bot.api.playlistAdd(self.playlist, song_id, 0,
+                                             add_song_callback)
                 else:
                     self.bot.reply('Added {0} songs'.format(num), data)
             _, song_id = to_add.pop(0)
-            self.playlist.add(song_id)
-            self.bot.api.playlistAdd(song_id, 0, add_song_callback)
+            playlist.add(song_id)
+            self.bot.api.playlistAdd(self.playlist, song_id, 0,
+                                     add_song_callback)
 
         if message not in self.room_list:
             reply = 'Could not find `{0}` in the room_list. '.format(message)
