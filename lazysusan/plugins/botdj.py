@@ -194,6 +194,7 @@ class Playlist(CommandPlugin):
 
     def clear_callback(self, caller_data, complete_callback=None):
         playlist = self.playlists[self.playlist]
+
         @display_exceptions
         def _closure(data):
             if not data['success']:
@@ -296,6 +297,7 @@ class Playlist(CommandPlugin):
         """Load up the specified playlist into the current remote playlist."""
         self.bot.reply('This feature currently does not work.')
         return
+
         def callback(cb_data=None):
             if cb_data and not cb_data['success']:
                 self.bot.reply('Failed loading all of playlist {0}'

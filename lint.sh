@@ -2,27 +2,18 @@
 
 dir=$(dirname $0)
 
-# pep8
-output=$(find $dir -name [A-Za-z_]\*.py -exec pep8 {} \;)
-if [ -n "$output" ]; then
-    echo "---pep8---"
-    echo -e "$output"
-    exit 1
+# flake8 (runs pep8 and pyflakes)
+flake8 $dir
+if [ $? -ne 0 ]; then
+    echo "Exiting due to flake8 errors. Fix and re-run to finish tests."
+    exit $?
 fi
 
 # pylint
-output=$(pylint lazysusan 2> /dev/null)
+output=$(pylint $dir/lazysusan 2> /dev/null)
 if [ -n "$output" ]; then
     echo "--pylint--"
     echo -e "$output"
-fi
-
-# pyflakes
-output=$(find $dir -name [A-Za-z_]\*.py -exec pyflakes {} \;)
-if [ -n "$output" ]; then
-    echo "--pyflakes--"
-    echo -e "$output"
-    exit 1
 fi
 
 exit 0
