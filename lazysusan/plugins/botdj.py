@@ -234,7 +234,7 @@ class Playlist(CommandPlugin):
         def callback(cb_data):
             if cb_data['success']:
                 reply = 'Created playlist {0}'.format(cb_data['playlist_name'])
-                self.playlists[message] = None
+                self.playlists[message] = set()
             else:
                 reply = cb_data['err']
             self.bot.reply(reply, data)
@@ -369,39 +369,63 @@ class Playlist(CommandPlugin):
     @single_arg_command
     def update_playlist(self, message, data):
         """Update the bot's playlist from songs played in the provided room."""
-        playlist = self.playlists[self.playlist]
-
         def room_info_callback(cb_data):
-            songs = cb_data['room']['metadata']['songlog']
-            to_add = []
-            for song in songs:
-                if song['_id'] not in playlist:
-                    to_add.append((song.get('score'), song['_id']))
-            if not to_add:
-                self.bot.reply('No songs to add.', data)
-                return
+            def add_songs():
+                def add_song_callback(_):
+                    if to_add:
+                        _, song_id = to_add.pop(0)
+                        playlist.add(song_id)
+                        self.bot.api.playlistAdd(self.playlist, song_id, 0,
+                                                 add_song_callback)
+                    else:
+                        self.bot.reply('Added {0} songs'.format(num), data)
 
-            # Most popular songs will play first (added last)
-            to_add.sort()
-            num = len(to_add)
+                playlist = self.playlists[self.playlist]
+                songs = cb_data['room']['metadata']['songlog']
 
-            def add_song_callback(_):
-                if to_add:
-                    _, song_id = to_add.pop(0)
-                    playlist.add(song_id)
-                    self.bot.api.playlistAdd(self.playlist, song_id, 0,
-                                             add_song_callback)
+                to_add = []
+                for song in songs:
+                    if song['_id'] not in playlist:
+                        to_add.append((song.get('score'), song['_id']))
+                if not to_add:
+                    self.bot.reply('No songs to add.', data)
+                    return
+
+                # Most popular songs will play first (added last)
+                to_add.sort()
+                num = len(to_add)
+                add_song_callback(None)
+
+            def list_callback(cb_data2):
+                self.playlists[self.playlist] = set(x['_id'] for x in
+                                                    cb_data2['list'])
+                add_songs()
+
+            def switch_callback(cb_data2):
+                if cb_data2['success']:
+                    self.playlist = cb_data2['playlist_name']
+                    self.bot.api.playlistAll(self.playlist, list_callback)
                 else:
-                    self.bot.reply('Added {0} songs'.format(num), data)
-            _, song_id = to_add.pop(0)
-            playlist.add(song_id)
-            self.bot.api.playlistAdd(self.playlist, song_id, 0,
-                                     add_song_callback)
+                    reply = cb_data2['err']
+                self.bot.reply(reply, data)
+
+            def create_callback(cb_data2):
+                if cb_data2['success']:
+                    self.bot.api.playlistSwitch(message, switch_callback)
+                else:
+                    self.bot.reply(reply, cb_data2['err'])
+
+            if message not in self.playlists:  # Create the playlist
+                self.bot.api.playlistCreate(message, create_callback)
+            elif message == self.playlist:  # Add songs
+                add_songs()
+            else:  # Switch to the playlist
+                self.bot.api.playlistSwitch(message, switch_callback)
 
         if message not in self.room_list:
             reply = 'Could not find `{0}` in the room_list. '.format(message)
             reply += 'Perhaps try one of these: '
-            reply += ', '.join(sorted(random.sample(self.room_list, 5)))
+            reply += ', '.join(sorted(random.sample(self.room_list, 10)))
             self.bot.reply(reply, data)
             return
         room_id = self.room_list[message]
