@@ -181,16 +181,28 @@ class Playlist(CommandPlugin):
     @admin_or_moderator_required
     @no_arg_command
     def clear(self, data):
-        """Clear the bot's playlist.
+        """Clear the bot's playlist."""
+        def delete_callback(cb_data):
+            def create_callback(cb_data2):
+                if cb_data2['success']:
+                    reply = 'Cleared playlist {0}'.format(self.playlist)
+                else:
+                    reply = cb_data['err']
+                self.bot.reply(reply, data)
 
-        TODO: Delete and recreate if not default playlist.
+            if cb_data['success']:
+                self.playlists[self.playlist] = set()
+                self.bot.api.playlistCreate(self.playlist, create_callback)
+            else:
+                self.bot.reply(cb_data['err'], data)
 
-        """
-        if self.playlists[self.playlist]:
+        if not self.playlists[self.playlist]:
+            self.bot.reply('The playlist is already empty.', data)
+        elif self.playlist != 'default':
+            self.bot.api.playlistDelete(self.playlist, delete_callback)
+        else:
             self.bot.api.playlistRemove(self.playlist, 0,
                                         self.clear_callback(data))
-        else:
-            self.bot.reply('The playlist is already empty.', data)
 
     def clear_callback(self, caller_data, complete_callback=None):
         playlist = self.playlists[self.playlist]
