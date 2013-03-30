@@ -10,10 +10,5 @@ if [ $? -ne 0 ]; then
 fi
 
 # pylint
-output=$(pylint $dir/lazysusan 2> /dev/null)
-if [ -n "$output" ]; then
-    echo "--pylint--"
-    echo -e "$output"
-fi
-
-exit 0
+pylint $dir/lazysusan 2> /dev/null
+exit $?

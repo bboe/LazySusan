@@ -122,7 +122,11 @@ class Playlist(CommandPlugin):
                 '/plskip': 'skip_next',
                 '/plswitch': 'switch',
                 '/plupdate': 'update_playlist'}
+    LIST_MAX_ITEMS = 5
     PLAYLIST_PREFIX = 'botplaylist.'
+    UPDATE_MAX_ITEMS = 10
+    UPDATE_MIN_LISTENERS = 5
+    UPDATE_MIN_ROOMS = 20
 
     def __init__(self, *args, **kwargs):
         super(Playlist, self).__init__(*args, **kwargs)
@@ -260,7 +264,8 @@ class Playlist(CommandPlugin):
                 if room['chatserver'] != self.bot.api.roomChatServer:
                     continue
                 count += 1
-                if count > 10 and room['metadata']['listeners'] < 10:
+                if room['metadata']['listeners'] < self.UPDATE_MIN_LISTENERS \
+                        and count > self.UPDATE_MIN_ROOMS:
                     break
                 self.room_list[room['shortcut']] = room['roomid']
             else:
@@ -282,7 +287,7 @@ class Playlist(CommandPlugin):
                 artist = item['metadata']['artist'].encode('utf-8')
                 song = item['metadata']['song'].encode('utf-8')
                 item = '"{0}" by {1}'.format(song, artist)
-                if len(preview) < 5:
+                if len(preview) < self.LIST_MAX_ITEMS:
                     preview.append(item)
             reply = ('There are {0} songs in the playlist. '
                      .format(len(playlist)))
@@ -428,7 +433,8 @@ class Playlist(CommandPlugin):
         if message not in self.room_list:
             reply = 'Could not find `{0}` in the room_list. '.format(message)
             reply += 'Perhaps try one of these: '
-            reply += ', '.join(sorted(random.sample(self.room_list, 10)))
+            reply += ', '.join(sorted(random.sample(self.room_list,
+                                                    self.UPDATE_MAX_ITEMS)))
             self.bot.reply(reply, data)
             return
         room_id = self.room_list[message]
