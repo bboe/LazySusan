@@ -298,8 +298,11 @@ class Playlist(CommandPlugin):
         """List the available playlists (remote)."""
         @display_exceptions
         def callback(cb_data):
+            def display(name):
+                return name if name != self.playlist else name + '*'
             reply = 'Available playlists: {0}'.format(
-                ', '.join(x['name'] for x in cb_data['list']))
+                ', '.join(display(x['name']) for x in
+                          sorted(cb_data['list'], key=lambda x: x['name'])))
             self.bot.reply(reply, data)
         self.bot.api.playlistListAll(callback)
 
