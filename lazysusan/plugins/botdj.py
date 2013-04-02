@@ -4,6 +4,17 @@ from lazysusan.helpers import (display_exceptions, admin_or_moderator_required,
 from lazysusan.plugins import CommandPlugin
 
 
+def best_match(selection, options):
+    """Return a single item or a list of possible options."""
+    possibles = [x for x in options if x.startswith(selection)]
+    if not possibles:
+        return [x for x in options if selection in x]
+    elif len(possibles) == 1:
+        return possibles[0]
+    else:
+        return possibles
+
+
 class Dj(CommandPlugin):
     COMMANDS = {'/autoskip': 'auto_skip',
                 '/djdown': 'stop',
@@ -62,16 +73,16 @@ class Dj(CommandPlugin):
             if self.is_playing:
                 self.end_song_step_down = True
             else:
-                print 'Leaving the table'
+                print('Leaving the table')
                 self.bot.api.remDj()
         elif self.should_step_up:
-            print 'Stepping up to DJ'
+            print('Stepping up to DJ')
             self.bot.api.addDj()
 
     def end_song(self, _):
         if self.end_song_step_down:
             if self.should_step_down:
-                print 'Delayed leaving the table.'
+                print('Delayed leaving the table.')
                 self.bot.api.remDj()
             self.end_song_step_down = False
 
@@ -372,7 +383,14 @@ class Playlist(CommandPlugin):
             else:
                 reply = cb_data['err']
             self.bot.reply(reply, data)
-        self.bot.api.playlistSwitch(message, callback)
+        selection = best_match(message, self.playlists.keys())
+        if not selection:
+            self.bot.reply('Invalid playlist name.', data)
+        elif isinstance(selection, list):
+            self.bot.reply('Possible playlist matches: {0}'
+                           .format(', '.join(selection)), data)
+        else:
+            self.bot.api.playlistSwitch(selection, callback)
 
     @single_arg_command
     def update_playlist(self, message, data):
