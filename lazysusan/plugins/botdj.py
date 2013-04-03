@@ -448,13 +448,18 @@ class Playlist(CommandPlugin):
             else:  # Switch to the playlist
                 self.bot.api.playlistSwitch(message, switch_callback)
 
-        if message not in self.room_list:
+        selection = best_match(message, self.room_list.keys())
+        if not selection:
             reply = 'Could not find `{0}` in the room_list. '.format(message)
             reply += 'Perhaps try one of these: '
             reply += ', '.join(sorted(random.sample(self.room_list,
                                                     self.UPDATE_MAX_ITEMS)))
             self.bot.reply(reply, data)
-            return
-        room_id = self.room_list[message]
-        self.bot.reply('Querying {0}'.format(room_id), data)
-        self.bot.api.roomInfo(room_info_callback, room_id=room_id)
+        elif isinstance(selection, list):
+            self.bot.reply('Possible room matches: {0}'
+                           .format(', '.join(selection)), data)
+        else:
+            message = selection
+            room_id = self.room_list[message]
+            self.bot.reply('Querying {0} ({1})'.format(message, room_id), data)
+            self.bot.api.roomInfo(room_info_callback, room_id=room_id)
