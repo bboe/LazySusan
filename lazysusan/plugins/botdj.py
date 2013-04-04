@@ -98,7 +98,7 @@ class Dj(CommandPlugin):
     def play(self, data):
         """Attempt to have the bot dj."""
         if self.is_dj:
-            return self.bot.reply('I am already DJing.', data)
+            return self.bot.reply('I am already a dj.', data)
         if len(self.bot.dj_ids) < self.bot.max_djs:
             return self.bot.api.addDj()
         self.bot.reply('I can not do that right now.', data)
@@ -167,7 +167,7 @@ class Playlist(CommandPlugin):
 
     @no_arg_command
     def add(self, data):
-        """Add the current song to the bot's current playlist."""
+        """Add the current song to the bot's default playlist."""
         if not self.bot.api.currentSongId:
             self.bot.reply('There is no song playing.', data)
             return
@@ -176,9 +176,10 @@ class Playlist(CommandPlugin):
             self.bot.reply('We already have that song.', data)
         else:
             self.bot.reply('Cool tunes, daddio.', data)
-            self.bot.api.playlistAdd(self.playlist, self.bot.api.currentSongId,
+            self.bot.api.playlistAdd('default', self.bot.api.currentSongId,
                                      len(playlist))
-            playlist.add(self.bot.api.currentSongId)
+            if self.playlist == 'default':
+                playlist.add(self.bot.api.currentSongId)
         self.bot.api.bop()
 
     @admin_or_moderator_required
@@ -196,11 +197,11 @@ class Playlist(CommandPlugin):
     @admin_or_moderator_required
     @no_arg_command
     def clear(self, data):
-        """Clear the bot's playlist."""
+        """Clear the bot's current playlist."""
         def delete_callback(cb_data):
             def create_callback(cb_data2):
                 if cb_data2['success']:
-                    reply = 'Cleared playlist {0}'.format(self.playlist)
+                    reply = 'Cleared playlist {0}.'.format(self.playlist)
                 else:
                     reply = cb_data['err']
                 self.bot.reply(reply, data)
@@ -220,8 +221,6 @@ class Playlist(CommandPlugin):
                                         self.clear_callback(data))
 
     def clear_callback(self, caller_data, complete_callback=None):
-        playlist = self.playlists[self.playlist]
-
         @display_exceptions
         def _closure(data):
             if not data['success']:
@@ -234,21 +233,24 @@ class Playlist(CommandPlugin):
             if removed % 30 == 0:
                 self.bot.reply('Removed {0} of {1} songs so far.'
                                .format(removed, original_count), caller_data)
-            if playlist:  # While there are songs continue to remove
+            if playlist:  # While there are songs, continue to remove
                 self.bot.api.playlistRemove(self.playlist, 0, _closure)
             elif complete_callback:  # Perform completion action
                 complete_callback()
             else:
-                self.bot.reply('Playlist cleared.', caller_data)
+                self.bot.reply('Cleared playlist {0}.'.format(self.playlist),
+                               caller_data)
+
+        playlist = self.playlists[self.playlist]
         original_count = len(playlist)
         return _closure
 
     @single_arg_command
     def create(self, message, data):
-        """Create a playlist."""
+        """Create a playlist with the provided name."""
         def callback(cb_data):
             if cb_data['success']:
-                reply = 'Created playlist {0}'.format(cb_data['playlist_name'])
+                reply = 'Created playlist {0}.'.format(cb_data['playlist_name'])
                 self.playlists[message] = set()
             else:
                 reply = cb_data['err']
@@ -257,7 +259,7 @@ class Playlist(CommandPlugin):
 
     @single_arg_command
     def delete(self, message, data):
-        """Delete a playlist."""
+        """Delete a playlist with the provided name."""
         def callback(cb_data):
             if cb_data['success']:
                 reply = 'Deleted playlist {0}'.format(cb_data['playlist_name'])
@@ -288,7 +290,7 @@ class Playlist(CommandPlugin):
 
     @no_arg_command
     def list(self, data):
-        """Output the # of songs in the playlist and the first five songs."""
+        """Output a summary of the songs in the current playlist."""
         @display_exceptions
         def callback(cb_data):
             preview = []
@@ -311,7 +313,7 @@ class Playlist(CommandPlugin):
 
     @no_arg_command
     def list_playlists(self, data):
-        """List the available playlists (remote)."""
+        """List the available playlists."""
         @display_exceptions
         def callback(cb_data):
             def display(name):
@@ -325,7 +327,10 @@ class Playlist(CommandPlugin):
     @admin_or_moderator_required
     @single_arg_command
     def load(self, message, data):
-        """Load up the specified playlist into the current remote playlist."""
+        """Load the specified local playlist into a new playlist."""
+        # TODO: * Create new local_{name} playlist (delete if it exists)
+        #       * Add the songs to the new playlist
+        #       * Switch to the playlist
         self.bot.reply('This feature currently does not work.')
         return
 
@@ -358,7 +363,7 @@ class Playlist(CommandPlugin):
 
     @no_arg_command
     def skip_next(self, data):
-        """Skip to the next song in the bot's playlist.
+        """Skip the next song in the bot's current playlist.
 
         Note: This will not affect the currently playing song.
 
@@ -394,7 +399,12 @@ class Playlist(CommandPlugin):
 
     @single_arg_command
     def update_playlist(self, message, data):
-        """Update the bot's playlist from songs played in the provided room."""
+        """Update the room playlist from songs played in the provideded room.
+
+        This will (create and) update a playlist specific to the provided
+        room. Upon completion, the bot will switch to this playlist.
+
+        """
         def room_info_callback(cb_data):
             def add_songs():
                 def add_song_callback(_):
