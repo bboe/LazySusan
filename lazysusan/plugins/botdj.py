@@ -130,6 +130,7 @@ class Playlist(CommandPlugin):
                 '/pldelete': 'delete',
                 '/pllist': 'list',
                 '/plload': 'load',
+                '/plshuffle': 'shuffle',
                 '/plskip': 'skip_next',
                 '/plswitch': 'switch',
                 '/plupdate': 'update_playlist'}
@@ -250,7 +251,8 @@ class Playlist(CommandPlugin):
         """Create a playlist with the provided name."""
         def callback(cb_data):
             if cb_data['success']:
-                reply = 'Created playlist {0}.'.format(cb_data['playlist_name'])
+                reply = 'Created playlist {0}.'.format(
+                    cb_data['playlist_name'])
                 self.playlists[message] = set()
             else:
                 reply = cb_data['err']
@@ -360,6 +362,41 @@ class Playlist(CommandPlugin):
             self.bot.api.playlistRemove(0, self.clear_callback(data, callback))
         else:
             callback()
+
+    @no_arg_command
+    def shuffle(self, data):
+        """Randomly select the next 10 songs in the bot's current playlist."""
+        def get_endpoints():
+            dst = index[0]
+            index[0] += 1
+            item = new_order.pop(0)
+            src = original.index(item)
+            if src != dst:  # Reorder for next use
+                del original[src]
+                original.insert(dst, item)
+            return src, dst
+
+        def callback(cb_data):
+            if not cb_data['success']:
+                self.bot.reply('Error shuffling playlist.', data)
+            elif index[0] >= num:
+                self.bot.reply('Everyday I\'m shuffling (completed).', data)
+            else:
+                src, dst = get_endpoints()
+                self.bot.api.playlistReorder(self.playlist, src, dst, callback)
+
+        # We don't actually keep track of the song order so just use their
+        # current indexes
+        original = list(range(len(self.playlists[self.playlist])))
+        num = min(len(original), 10)
+        if num < 2:
+            self.bot.reply('There are too few items to shuffle in {0}.'
+                           .format(self.playlist), data)
+            return
+        new_order = random.sample(original, num)
+        index = [0]  # Needs to be a list in order to mutate
+        src, dst = get_endpoints()
+        self.bot.api.playlistReorder(self.playlist, src, dst, callback)
 
     @no_arg_command
     def skip_next(self, data):
