@@ -330,38 +330,60 @@ class Playlist(CommandPlugin):
     @single_arg_command
     def load(self, message, data):
         """Load the specified local playlist into a new playlist."""
-        # TODO: * Create new local_{name} playlist (delete if it exists)
-        #       * Add the songs to the new playlist
-        #       * Switch to the playlist
-        self.bot.reply('This feature currently does not work.')
-        return
-
-        def callback(cb_data=None):
-            if cb_data and not cb_data['success']:
-                self.bot.reply('Failed loading all of playlist {0}'
-                               .format(message), data)
-                return
+        def add_songs(cb_data=None):
+            if cb_data and cb_data['success']:
+                failed.pop(0)
+            playlist = self.playlists[playlist_name]
             while song_ids:
                 song_id = song_ids.pop(0)
-                if song_id not in self.playlist:
-                    self.playlist.add(song_id)
-                    self.bot.api.playlistAdd(song_id, len(self.playlist) - 1,
-                                             callback)
+                failed.insert(0, song_id)  # Removed on success
+                if song_id not in playlist:
+                    playlist.add(song_id)
+                    self.bot.api.playlistAdd(playlist_name, song_id,
+                                             len(playlist) - 1, add_songs)
                     break
             else:
-                self.bot.reply('Loaded {0} songs from playlist {1}.'
-                               .format(len(self.playlist), message), data)
+                self.bot.api.playlistSwitch(playlist_name, switch_callback)
+
+        def create_callback(cb_data):
+            if cb_data['success']:
+                self.playlists[playlist_name] = set()
+                add_songs()
+            else:
+                self.bot.reply(cb_data['err'], data)
+
+        def delete_callback(cb_data):
+            if cb_data['success']:
+                del self.playlists[playlist_name]
+                self.bot.api.playlistCreate(playlist_name, create_callback)
+            else:
+                self.bot.reply(cb_data['err'], data)
+
+        def switch_callback(cb_data):
+            if cb_data['success']:
+                self.playlist = cb_data['playlist_name']
+                reply = ('Loaded {0} songs from local playlist {1}.'
+                         .format(len(self.playlist), message))
+                if failed:
+                    reply += (' Failed to load the following song ids: {0}'
+                              .format(','.join(failed)))
+            else:
+                reply = cb_data2['err']
+            self.bot.reply(reply, data)
 
         config_name = '{0}{1}'.format(self.PLAYLIST_PREFIX, message)
         if config_name not in self.bot.config:
             self.bot.reply('Playlist `{0}` does not exist.'
                            .format(config_name), data)
             return
+
         song_ids = self.bot.config[config_name].split('\n')
-        if self.playlist:
-            self.bot.api.playlistRemove(0, self.clear_callback(data, callback))
-        else:
-            callback()
+        failed = []
+        playlist_name = 'local_{0}'.format(message)
+        if playlist_name in self.playlists:  # Delete the playlist
+            self.bot.api.playlistDelete(playlist_name, delete_callback)
+        else:  # Create the playlist
+            self.bot.api.playlistCreate(playlist_name, create_callback)
 
     @no_arg_command
     def shuffle(self, data):
@@ -479,8 +501,7 @@ class Playlist(CommandPlugin):
                     self.playlist = cb_data2['playlist_name']
                     self.bot.api.playlistAll(self.playlist, list_callback)
                 else:
-                    reply = cb_data2['err']
-                self.bot.reply(reply, data)
+                    self.bot.reply(cb_data2['err'], data)
 
             def create_callback(cb_data2):
                 if cb_data2['success']:
