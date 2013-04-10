@@ -368,7 +368,7 @@ class Playlist(CommandPlugin):
                     reply += (' Failed to load the following song ids: {0}'
                               .format(','.join(failed)))
             else:
-                reply = cb_data2['err']
+                reply = cb_data['err']
             self.bot.reply(reply, data)
 
         config_name = '{0}{1}'.format(self.PLAYLIST_PREFIX, message)

@@ -10,5 +10,5 @@ if [ $? -ne 0 ]; then
 fi
 
 # pylint
-pylint $dir/lazysusan 2> /dev/null
+pylint --rcfile=$dir/.pylintrc $dir/lazysusan 2> /dev/null
 exit $?

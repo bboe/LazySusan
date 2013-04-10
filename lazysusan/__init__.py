@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+"""LazySusan is a pluginable bot for turntable.fm."""
+
+from __future__ import print_function
 import heapq
 import logging
 import os
@@ -18,19 +20,25 @@ __version__ = '0.1rc11'
 
 
 def handle_error(*args, **kwargs):
-    print args
-    print kwargs
+    """Callback that outputs errors that occur on the websocket."""
+    print(args)
+    print(kwargs)
 
 
 class LazySusanException(Exception):
-    pass
+
+    """Exception class used for internal LazySusan issues."""
 
 
 class LazySusan(object):
+
+    """The primary class for LazySusan that represents a bot."""
+
     update_checked = False
 
     @staticmethod
     def _get_config(section):
+        """Return a dictionary of configuration options for the section."""
         config = ConfigParser()
         if 'APPDATA' in os.environ:  # Windows
             os_config_path = os.environ['APPDATA']
@@ -106,6 +114,11 @@ class LazySusan(object):
         self.api.ws.on_error = handle_error
 
     def _load_command_plugin(self, plugin):
+        """Load a plugin (by name) that responds to a command.
+
+        Return whether or not the plugin was loaded successfully.
+
+        """
         to_add = {}
         for command, func_name in plugin.COMMANDS.items():
             if command in self.commands:
@@ -123,6 +136,7 @@ class LazySusan(object):
         return True
 
     def _unload_command_plugin(self, plugin):
+        """Unload a plugin (by name) that responds to commands."""
         for command in plugin.COMMANDS:
             del self.commands[command]
 
@@ -171,6 +185,13 @@ class LazySusan(object):
             self.api.pm(reply, user_id)
 
     def _connect(self, room_id, when_connected=True):
+        """Internal function to handling joining rooms.
+
+        :param room_id: The id of the room to connect to.
+        :param when_connected: When false, don't connect to the room if
+            LazySusan is already connected to a room.
+
+        """
         if self.api.roomId == room_id or (self.api.roomId
                                           and not when_connected):
             return
@@ -181,6 +202,7 @@ class LazySusan(object):
         """With no arguments, display this message. Otherwise, display the help
         for the given command. Type /commands to see the list of commands."""
         def docstr(item):
+            """Return a stripped version of a command function's docstring."""
             lines = []
             for line in item.__doc__.split('\n'):
                 line = line.strip()
@@ -222,6 +244,7 @@ class LazySusan(object):
     def cmd_leave(self, data):
         """Leave the current room and remain connected to the chat server."""
         def callback(cb_data):
+            """Handle the response from the roomDeregister API call."""
             user_id = get_sender_id(data)
             if cb_data['success']:
                 # Schedule an event to possibly rejoin after 1 minute
@@ -298,34 +321,45 @@ class LazySusan(object):
         return item in self.moderator_ids
 
     def handle_add_dj(self, data):
+        """Handle the event indicating a new dj stepped up to the table."""
         for user in data['user']:
             self.dj_ids.add(user['userid'])
 
     def handle_booted_user(self, data):
+        """Handle the event indicating a user was booted from the room."""
         if data['userid'] == self.bot_id:
             # Try to rejoin the default room after 30 seconds.
             self.api.roomId = None
             self.schedule(30, self._connect, self.config['room_id'], False)
 
     def handle_add_moderator(self, data):
+        """Handle the event indicating a user was promoted to moderator."""
         self.moderator_ids.add(data['userid'])
 
     def handle_pm(self, data):
+        """Handle the event indicating LazySusan received a private message."""
         self.process_message(data)
 
     def handle_ready(self, _):
-        self.api.userInfo(self.set_username)
+        """Handle the event indicating LazySusan has connected to turntable."""
+        def callback(cb_data):
+            """Handle response to the userInfo API call."""
+            self.username = cb_data['name']
+        self.api.userInfo(callback)
 
     @display_exceptions
     def handle_remove_dj(self, data):
+        """Handle the event indicating user has left the dj table."""
         for user in data['user']:
             self.dj_ids.remove(user['userid'])
 
     @display_exceptions
     def handle_remove_moderator(self, data):
+        """Handle the event indicating a user was demoted from moderator."""
         self.moderator_ids.remove(data['userid'])
 
     def handle_room_change(self, data):
+        """Handle the response to a room connect event (_connect)."""
         if not data['success']:
             if data['errno'] == 3:
                 print('You are banned from that room. Retrying in 3 minutes.')
@@ -344,19 +378,32 @@ class LazySusan(object):
 
     @display_exceptions
     def handle_room_message(self, data):
+        """Handle the event indicating a chat room message was received."""
         if self.username and self.username != data['name']:
             self.process_message(data)
 
     def handle_user_join(self, data):
+        """Handle the event indicating a user joined the room."""
         for user in data['user']:
             self.listener_ids.add(user['userid'])
 
     @display_exceptions
     def handle_user_leave(self, data):
+        """Handle the event indicating a user left the room."""
         for user in data['user']:
             self.listener_ids.remove(user['userid'])
 
     def load_plugin(self, plugin_name, attempt_reload=False):
+        """Load a LazySusan plugin by name.
+
+        :param plugin_name: Indicates the plugin to load. The plugin name
+            should be of the format `module.PluginClass`. However, in the event
+            that the class name and the module name are the same, the short
+            version `name` is appropriate.
+        :param attempt_reload: Must be set to True in order to reload an
+            already loaded plugin.
+
+        """
         parts = plugin_name.split('.')
         if len(parts) > 1:
             module_name = '.'.join(parts[:-1])
@@ -400,6 +447,7 @@ class LazySusan(object):
         return True
 
     def process_message(self, data):
+        """Parse messages and invoke a command_plugin if appropriate."""
         parts = data['text'].split()
         if not parts:
             return
@@ -414,6 +462,7 @@ class LazySusan(object):
         handler(message, data)
 
     def reply(self, message, data):
+        """Reply to a command on the same stream (pm/room chat) as invoked."""
         if data['command'] == 'speak':
             self.api.speak(message)
         elif data['command'] == 'pmmed':
@@ -423,6 +472,7 @@ class LazySusan(object):
                             .format(data['command']))
 
     def run_delayed_events(self, _):
+        """Run scheduled events whose min_delay time has expired."""
         now = time.time()
         process = True
         while process and self._delayed_events:
@@ -446,13 +496,12 @@ class LazySusan(object):
         heapq.heappush(self._delayed_events,
                        (schedule_time, callback, args, kwargs))
 
-    def set_username(self, data):
-        self.username = data['name']
-
     def start(self):
+        """Start LazySusan."""
         self.api.start()
 
     def unload_plugin(self, plugin_name):
+        """Unload a LazySusan plugin by name."""
         if plugin_name not in self._loaded_plugins:
             return False
         plugin = self._loaded_plugins[plugin_name]
@@ -465,6 +514,9 @@ class LazySusan(object):
 
 
 class TruncateFormatter(logging.Formatter):
+
+    """A log formatter that will truncate lines over a certain length."""
+
     def __init__(self, *args, **kwargs):
         super(TruncateFormatter, self).__init__(*args, **kwargs)
         self.max_len = 240
@@ -476,6 +528,7 @@ class TruncateFormatter(logging.Formatter):
 
 
 def main():
+    """The command-line entry point to LazySusan."""
     parser = OptionParser(version='%prog {0}'.format(__version__))
     parser.add_option('-c', '--config', metavar='SECTION', default='DEFAULT',
                       help=('Select the config section to load the settings '

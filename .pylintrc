@@ -1,0 +1,15 @@
+[MASTER]
+profile=no
+
+[MESSAGES CONTROL]
+disable=
+
+[REPORTS]
+output-format=colorized
+include-ids=yes
+reports=no
+
+[DESIGN]
+max-attributes=16
+max-branchs=24
+max-public-methods=32
