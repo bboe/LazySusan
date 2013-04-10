@@ -2,7 +2,7 @@
 profile=no
 
 [MESSAGES CONTROL]
-disable=
+disable=I0011
 
 [REPORTS]
 output-format=colorized

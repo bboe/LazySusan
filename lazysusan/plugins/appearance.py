@@ -1,8 +1,13 @@
+"""A set of plugins that affect LazySusan's appearance."""
+
 from lazysusan.helpers import display_exceptions, single_arg_command
 from lazysusan.plugins import CommandPlugin
 
 
 class Appearance(CommandPlugin):
+
+    """A plugin that enables changing the bot's avatar and machine."""
+
     COMMANDS = {'/botavatar': 'set_avatar',
                 '/botmachine': 'set_machine'}
 
@@ -12,6 +17,7 @@ class Appearance(CommandPlugin):
         """Set's the bot's avatar to the desired avatar id."""
         @display_exceptions
         def callback(cb_data):
+            """Handle the response to the setAvatar API call."""
             if not cb_data['success']:
                 self.bot.reply(cb_data['err'], data)
         if not message.isdigit():
@@ -28,6 +34,7 @@ class Appearance(CommandPlugin):
         Available machines are: linux, mac, pc, chrome"""
         @display_exceptions
         def callback(cb_data):
+            """Handle the response to the modifyLaptop API call."""
             if cb_data['success']:
                 self.bot.reply('Bot change successful.'
                                'You may need to re-join the table.', data)

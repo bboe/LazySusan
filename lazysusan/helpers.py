@@ -1,3 +1,5 @@
+"""A collection of useful functions for LazySusan."""
+
 import traceback
 from functools import wraps
 from lazysusan.plugins import CommandPlugin
@@ -11,7 +13,7 @@ def admin_required(function):
     If the sending user is not an admin, a private message will be returned to
     them indicated such."""
     @wraps(function)
-    def wrapper(cls, *args, **kwargs):
+    def wrapper(cls, *args, **kwargs):  # pylint: disable-msg=C0111
         if isinstance(cls, CommandPlugin):
             bot = cls.bot
         else:  # Support the built-in commands
@@ -34,7 +36,7 @@ def admin_or_moderator_required(function):
     will be returned to them indicating such.
     """
     @wraps(function)
-    def wrapper(cls, *args, **kwargs):
+    def wrapper(cls, *args, **kwargs):  # pylint: disable-msg=C0111
         if isinstance(cls, CommandPlugin):
             bot = cls.bot
         else:  # Support the built-in commands
@@ -55,15 +57,16 @@ def admin_or_moderator_required(function):
 def display_exceptions(function):
     """Expand the arguments to the functions."""
     @wraps(function)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs):  # pylint: disable-msg=C0111
         try:
             return function(*args, **kwargs)
-        except:
+        except:  # Handle all exceptions -- pylint: disable-msg=W0702
             traceback.print_exc()
     return wrapper
 
 
 def get_sender_id(data):
+    """Return the userid of the user from the message data."""
     if data['command'] == 'speak':
         return data['userid']
     elif data['command'] == 'pmmed':
@@ -84,7 +87,7 @@ def moderator_required(function):
     to them indicating such.
     """
     @wraps(function)
-    def wrapper(cls, *args, **kwargs):
+    def wrapper(cls, *args, **kwargs):  # pylint: disable-msg=C0111
         if isinstance(cls, CommandPlugin):
             bot = cls.bot
         else:  # Support the built-in commands
@@ -103,17 +106,17 @@ def moderator_required(function):
 def no_arg_command(function):
     """Indicate that the command does not have a message."""
     @wraps(function)
-    def wrapper(cls, *args, **kwargs):
-        if args[0]:
+    def wrapper(cls, message, *args, **kwargs):  # pylint: disable-msg=C0111
+        if message:
             return
-        return function(cls, *args[1:], **kwargs)
+        return function(cls, *args, **kwargs)
     return wrapper
 
 
 def single_arg_command(function):
     """Indicate that the command takes a message with a single argument."""
     @wraps(function)
-    def wrapper(cls, *args, **kwargs):
+    def wrapper(cls, *args, **kwargs):  # pylint: disable-msg=C0111
         if not args[0] or ' ' in args[0]:  # Input will only contain spaces
             return
         return function(cls, *args, **kwargs)
