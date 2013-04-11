@@ -6,6 +6,8 @@ from lazysusan.plugins import CommandPlugin
 
 def best_match(selection, options):
     """Return a single item or a list of possible options."""
+    if selection in options:
+        return selection
     possibles = [x for x in options if x.startswith(selection)]
     if not possibles:
         return [x for x in options if selection in x]
