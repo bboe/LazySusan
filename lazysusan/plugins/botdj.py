@@ -1,3 +1,5 @@
+"""A set of LazySusan plugins that control the bot as a dj."""
+
 import random
 from lazysusan.helpers import (display_exceptions, admin_or_moderator_required,
                                no_arg_command, single_arg_command)
@@ -5,7 +7,11 @@ from lazysusan.plugins import CommandPlugin
 
 
 def best_match(selection, options):
-    """Return a single item or a list of possible options."""
+    """Return the best match from a set of options if possible.
+
+    Return a list when there is not a single viable option.
+
+    """
     if selection in options:
         return selection
     possibles = [x for x in options if x.startswith(selection)]
@@ -18,6 +24,9 @@ def best_match(selection, options):
 
 
 class Dj(CommandPlugin):
+
+    """A plugin that controls whether or not the bot is dj-ing."""
+
     COMMANDS = {'/autoskip': 'auto_skip',
                 '/djdown': 'stop',
                 '/djup': 'play',
@@ -25,20 +34,24 @@ class Dj(CommandPlugin):
 
     @property
     def should_step_down(self):
+        """Return true if the bot should stop dj-ing."""
         return self.is_dj and (len(self.bot.listener_ids) <= 1
                                or len(self.bot.dj_ids) >= self.bot.max_djs)
 
     @property
     def should_step_up(self):
+        """Return true if the bot should begin dj-ing."""
         return (not self.is_dj and len(self.bot.listener_ids) > 1
                 and len(self.bot.dj_ids) < min(2, self.bot.max_djs - 1))
 
     @property
     def is_dj(self):
+        """Return true if the bot is currently dj-ing."""
         return self.bot.bot_id in self.bot.dj_ids
 
     @property
     def is_playing(self):
+        """Return true if the bot is currently playing a song."""
         return self.bot.bot_id == self.bot.api.currentDjId
 
     def __init__(self, *args, **kwargs):
@@ -65,6 +78,11 @@ class Dj(CommandPlugin):
 
     @display_exceptions
     def dj_update(self, data):
+        """Handle callbacks affecting the users in the room and at the table.
+
+        As a result, the bot may begin or stop dj-ing.
+
+        """
         for user in data['user']:
             if self.bot.bot_id == user['userid']:
                 if data['command'] == 'rem_dj':
@@ -78,10 +96,11 @@ class Dj(CommandPlugin):
                 print('Leaving the table')
                 self.bot.api.remDj()
         elif self.should_step_up:
-            print('Stepping up to DJ')
+            print('Stepping up to dj')
             self.bot.api.addDj()
 
     def end_song(self, _):
+        """Conditionally stop dj-ing at the end of a song."""
         if self.end_song_step_down:
             if self.should_step_down:
                 print('Delayed leaving the table.')
@@ -119,7 +138,7 @@ class Dj(CommandPlugin):
     def stop(self, data):
         """Have the bot step down as a dj."""
         if not self.is_dj:
-            return self.bot.reply('I am not currently DJing.', data)
+            return self.bot.reply('I am not currently dj-ing.', data)
         self.bot.api.remDj()
 
 
