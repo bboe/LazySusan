@@ -9,8 +9,8 @@ import time
 from ConfigParser import ConfigParser
 from datetime import datetime
 from lazysusan.helpers import (admin_required, display_exceptions,
-                               get_sender_id, no_arg_command,
-                               single_arg_command)
+                               dynamic_permissions, get_sender_id,
+                               no_arg_command, single_arg_command)
 from lazysusan.plugins import CommandPlugin
 from optparse import OptionParser
 from ttapi import Bot
@@ -157,7 +157,10 @@ class LazySusan(object):
         no_priv_cmds = []
 
         for command, func in self.commands.items():
-            if func.func_dict.get('admin_required'):
+            if func.func_dict.get('dynamic_permissions'):
+                # TODO: Handle this case
+                pass
+            elif func.func_dict.get('admin_required'):
                 admin_cmds.append(command)
             elif func.func_dict.get('admin_or_moderator_required'):
                 admin_or_moderator_cmds.append(command)
@@ -294,8 +297,8 @@ class LazySusan(object):
             reply = 'Plugin `{0}` could not be unloaded.'.format(message)
         self.reply(reply, data)
 
-    @admin_required
     @no_arg_command
+    @dynamic_permissions(admin=True)
     def cmd_plugins(self, data):
         """Display the list of loaded plugins."""
         reply = 'Loaded plugins: '

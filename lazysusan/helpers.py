@@ -65,6 +65,19 @@ def display_exceptions(function):
     return wrapper
 
 
+def dynamic_permissions(admin=False, mod=False):
+    """A command decorator generator whose permissions can be altered."""
+    def generator(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            return dp(*args, **kwargs)
+
+        dp = DynamicPermissions(function, mod=mod, admin=admin)
+        wrapper.func_dict['dynamic_permissions'] = True
+        return wrapper
+    return generator
+
+
 def get_sender_id(data):
     """Return the userid of the user from the message data."""
     if data['command'] == 'speak':
@@ -121,3 +134,24 @@ def single_arg_command(function):
             return
         return function(cls, *args, **kwargs)
     return wrapper
+
+
+class DynamicPermissions(object):
+
+    """Responsible for altering dynamic_permission decorated functions."""
+
+    PERM_MAPPING = {(True, True): admin_or_moderator_required,
+                    (True, False): admin_required,
+                    (False, True): moderator_required}
+
+    decorated = {}
+
+    def __init__(self, function, admin, mod):
+        if admin or mod:
+            self.wrapped = self.PERM_MAPPING[(admin, mod)](function)
+        else:
+            self.wrapped = function
+        self.decorated[self.wrapped] = function
+
+    def __call__(self, *args, **kwargs):
+        return self.wrapped(*args, **kwargs)
