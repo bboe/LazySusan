@@ -14,6 +14,6 @@ class Talk(CommandPlugin):
         """Repeat everything after /echo to the same stream."""
         self.bot.reply(message, data)
 
-    def say(self, message, data):
+    def say(self, message, _):
         """Repeat everything after /speak to the bot's current room."""
         self.bot.api.speak(message)

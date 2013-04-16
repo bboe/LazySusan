@@ -68,11 +68,12 @@ def display_exceptions(function):
 def dynamic_permissions(admin=False, mod=False):
     """A command decorator generator whose permissions can be altered."""
     def generator(function):
+        """Return a generator that dynamically decorates the function."""
         @wraps(function)
-        def wrapper(*args, **kwargs):
-            return dp(*args, **kwargs)
+        def wrapper(*args, **kwargs):  # pylint:disable-msg=C0111
+            return dyn(*args, **kwargs)
 
-        dp = DynamicPermissions(function, mod=mod, admin=admin)
+        dyn = DynamicPermissions(function, mod=mod, admin=admin)
         wrapper.func_dict['dynamic_permissions'] = True
         return wrapper
     return generator
