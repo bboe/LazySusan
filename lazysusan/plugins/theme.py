@@ -1,9 +1,9 @@
 """Plugins for managing room themes."""
 
 from lazysusan.helpers import (
-        admin_or_moderator_required,
-        display_exceptions,
-        no_arg_command)
+    admin_or_moderator_required,
+    display_exceptions,
+    no_arg_command)
 
 from lazysusan.plugins import CommandPlugin
 
@@ -13,10 +13,10 @@ class Theme(CommandPlugin):
     """A plugin for managing the room's current theme."""
 
     COMMANDS = {
-            '/theme': 'get_theme',
-            '/themeset': 'set_theme',
-            '/themeclear': 'clear_theme',
-            }
+        '/theme': 'get_theme',
+        '/themeset': 'set_theme',
+        '/themeclear': 'clear_theme',
+    }
 
     theme = None
 
@@ -27,7 +27,7 @@ class Theme(CommandPlugin):
             self.bot.reply("There's no theme right now; anything goes!", data)
         else:
             self.bot.reply(
-                    "The current theme is: \"{}\"".format(self.theme), data)
+                "The current theme is: \"{}\"".format(self.theme), data)
 
     @display_exceptions
     @admin_or_moderator_required
